@@ -1,0 +1,1507 @@
+{
+  "name": "AI Hiring Intelligence System",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "ead3bbca-e2de-4700-bf70-ec9980bc2a65",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -624,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1WyIIQ3YhGumHS-L8dZCSR2-TwhHG1-Fg5qE7CIHgK9I/edit?gid=1105811079#gid=1105811079",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1WyIIQ3YhGumHS-L8dZCSR2-TwhHG1-Fg5qE7CIHgK9I/edit?gid=1105811079#gid=1105811079",
+          "mode": "url"
+        },
+        "options": {}
+      },
+      "id": "809b15a2-b988-446e-b5f7-512aa064a226",
+      "name": "Get row(s) in sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -400,
+        384
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst candidates = rows.map(r => ({\n  id:               r['Auto-ID'],\n  name:             r['Applicant Name'],\n  role:             ((r['Position Level'] || '') + ' ' + (r['Position Type'] || '')).trim(),\n  source:           r['Channel'],\n  stage:            r['Offered'] === 'Yes' ? 'Offer' : (r['Rejected'] === 'Yes' ? 'Rejected' : 'Interview'),\n  days_in_pipeline: parseInt(r['Rounds Completed'] || 0) * 7,\n  rejection_reason: r['Rejected Reason'] || null,\n  offer_declined:   r['Offer Acceptance'] === 'No',\n  reschedules:      parseInt(r['Re-Schedules'] || 0),\n  round_score:      parseFloat(r['Cumulative Round Score'] || 0),\n  position_id:      r['Position-ID'],\n  interviewers:     (r['Interviewers'] || '').split(';').map(s => s.trim()).filter(Boolean)\n}));\nconst interviewerMap = {};\nfor (const c of candidates) {\n  for (const iv of c.interviewers) {\n    if (!iv) continue;\n    interviewerMap[iv] = (interviewerMap[iv] || 0) + 1;\n  }\n}\nconst interviewers = Object.entries(interviewerMap).map(([name, panels_this_month]) => ({ name, panels_this_month, capacity: 10 }));\nconst roleMap = {};\nfor (const c of candidates) {\n  if (!roleMap[c.role]) roleMap[c.role] = { role: c.role, days_open: 0 };\n  roleMap[c.role].days_open = Math.max(roleMap[c.role].days_open, c.days_in_pipeline);\n}\nconst open_roles = Object.values(roleMap).map(r => ({\n  role: r.role,\n  days_open: r.days_open,\n  sla_days: (r.role.toLowerCase().includes('staff') || r.role.toLowerCase().includes('principal')) ? 45 : 30\n}));\nreturn [{ json: { run_id: 'run_' + Date.now(), timestamp: new Date().toISOString(), candidates, interviewers, open_roles } }];"
+      },
+      "id": "da700f9b-eecf-4e4e-9029-6185545ef8b2",
+      "name": "Ingest & Normalise Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst routing = {\n  sourcing_quality:    { model: 'gpt-4o-mini', reason: 'Pattern matching over sources' },\n  rejection_pattern:   { model: 'gpt-4o',      reason: 'Nuanced root-cause analysis' },\n  panel_load_balancer: { model: 'gpt-4o-mini', reason: 'Simple numeric comparison' },\n  offer_insights:      { model: 'gpt-4o',      reason: 'Multi-factor decline reasoning' },\n  pipeline_health:     { model: 'gpt-4o-mini', reason: 'SLA and funnel math' }\n};\nreturn [{ json: { ...data, routing } }];"
+      },
+      "id": "66c85798-ff42-4106-900f-5c969ef9fe54",
+      "name": "Routing Agent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        48,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_OPENAI_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "text-embedding-3-large"
+            },
+            {
+              "name": "input",
+              "value": "Which sourcing channels produce the best candidates and highest offer acceptance rates?"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5463ae02-791c-4051-8abb-cf32bdfca9dd",
+      "name": "Embed Query \u2014 Sourcing Quality",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        272,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// OpenAI returns: { data: [ { embedding: [...floats] } ] }\nconst body = $input.first().json;\nconst vector = body.data?.[0]?.embedding;\nif (!vector || !Array.isArray(vector)) {\n  throw new Error('Embedding not found in OpenAI response');\n}\nreturn [{ json: { embedding_vector: vector } }];"
+      },
+      "id": "eee01855-e4db-45a8-a21c-ea9c819b89b6",
+      "name": "Extract Vector \u2014 Sourcing Quality",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_OPENAI_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "text-embedding-3-large"
+            },
+            {
+              "name": "input",
+              "value": "What are the most common rejection reasons at each interview stage and how to fix them?"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "001a1686-a3ac-488c-8673-5f78709f0aa4",
+      "name": "Embed Query \u2014 Rejection Pattern",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        272,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// OpenAI returns: { data: [ { embedding: [...floats] } ] }\nconst body = $input.first().json;\nconst vector = body.data?.[0]?.embedding;\nif (!vector || !Array.isArray(vector)) {\n  throw new Error('Embedding not found in OpenAI response');\n}\nreturn [{ json: { embedding_vector: vector } }];"
+      },
+      "id": "148b4af1-88e4-4860-a99b-eeb2effb523c",
+      "name": "Extract Vector \u2014 Rejection Pattern",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_OPENAI_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "text-embedding-3-large"
+            },
+            {
+              "name": "input",
+              "value": "What is a healthy interviewer panel load and how to rebalance overloaded interviewers?"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e12141c0-27b1-4f90-ae3e-5d9bfca569c5",
+      "name": "Embed Query \u2014 Panel Load Balancer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        272,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// OpenAI returns: { data: [ { embedding: [...floats] } ] }\nconst body = $input.first().json;\nconst vector = body.data?.[0]?.embedding;\nif (!vector || !Array.isArray(vector)) {\n  throw new Error('Embedding not found in OpenAI response');\n}\nreturn [{ json: { embedding_vector: vector } }];"
+      },
+      "id": "d360390d-13c7-4912-a3ed-139dbdd42651",
+      "name": "Extract Vector \u2014 Panel Load Balancer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_OPENAI_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "text-embedding-3-large"
+            },
+            {
+              "name": "input",
+              "value": "Why do candidates decline offers and what strategies improve offer acceptance rates?"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c06c1423-0d84-469e-bce7-3a3004d037e7",
+      "name": "Embed Query \u2014 Offer Insights",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        272,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// OpenAI returns: { data: [ { embedding: [...floats] } ] }\nconst body = $input.first().json;\nconst vector = body.data?.[0]?.embedding;\nif (!vector || !Array.isArray(vector)) {\n  throw new Error('Embedding not found in OpenAI response');\n}\nreturn [{ json: { embedding_vector: vector } }];"
+      },
+      "id": "1dd7af46-008d-4401-abca-79f3add5c1d6",
+      "name": "Extract Vector \u2014 Offer Insights",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_OPENAI_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "text-embedding-3-large"
+            },
+            {
+              "name": "input",
+              "value": "What are SLA benchmarks for time-to-hire by role level and what causes pipeline slowdowns?"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "deb22131-b1ed-4ca0-bcea-b447b00d59a4",
+      "name": "Embed Query \u2014 Pipeline Health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        272,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// OpenAI returns: { data: [ { embedding: [...floats] } ] }\nconst body = $input.first().json;\nconst vector = body.data?.[0]?.embedding;\nif (!vector || !Array.isArray(vector)) {\n  throw new Error('Embedding not found in OpenAI response');\n}\nreturn [{ json: { embedding_vector: vector } }];"
+      },
+      "id": "cf65a3f7-67eb-4b79-9a5a-4ec731f4cc2d",
+      "name": "Extract Vector \u2014 Pipeline Health",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hiring-rag-x4v8crc.svc.aped-4627-b74a.pinecone.io/query",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Api-Key",
+              "value": "YOUR_PINECONE_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "vector",
+              "value": "={{$json.embedding_vector}}"
+            },
+            {
+              "name": "topK",
+              "value": "=4"
+            },
+            {
+              "name": "namespace",
+              "value": "hiring-benchmarks"
+            },
+            {
+              "name": "includeMetadata",
+              "value": "=true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9fb19342-dd70-4f66-aa3b-f1b1defaae47",
+      "name": "RAG \u2014 Sourcing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hiring-rag-x4v8crc.svc.aped-4627-b74a.pinecone.io/query",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Api-Key",
+              "value": "YOUR_PINECONE_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "vector",
+              "value": "={{$json.embedding_vector}}"
+            },
+            {
+              "name": "topK",
+              "value": "=4"
+            },
+            {
+              "name": "namespace",
+              "value": "hiring-benchmarks"
+            },
+            {
+              "name": "includeMetadata",
+              "value": "=true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "99880ae9-e33e-4109-80d9-3d80c0432d10",
+      "name": "RAG \u2014 Rejection",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hiring-rag-x4v8crc.svc.aped-4627-b74a.pinecone.io/query",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Api-Key",
+              "value": "YOUR_PINECONE_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "vector",
+              "value": "={{$json.embedding_vector}}"
+            },
+            {
+              "name": "topK",
+              "value": "=4"
+            },
+            {
+              "name": "namespace",
+              "value": "hiring-benchmarks"
+            },
+            {
+              "name": "includeMetadata",
+              "value": "=true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6365748a-d572-4f76-9434-442994e62f91",
+      "name": "RAG \u2014 Panel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hiring-rag-x4v8crc.svc.aped-4627-b74a.pinecone.io/query",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Api-Key",
+              "value": "YOUR_PINECONE_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "vector",
+              "value": "={{$json.embedding_vector}}"
+            },
+            {
+              "name": "topK",
+              "value": "=4"
+            },
+            {
+              "name": "namespace",
+              "value": "hiring-benchmarks"
+            },
+            {
+              "name": "includeMetadata",
+              "value": "=true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5c39b30b-0fac-4780-9bc9-5a712f0e87e8",
+      "name": "RAG \u2014 Offer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hiring-rag-x4v8crc.svc.aped-4627-b74a.pinecone.io/query",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Api-Key",
+              "value": "YOUR_PINECONE_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "vector",
+              "value": "={{$json.embedding_vector}}"
+            },
+            {
+              "name": "topK",
+              "value": "=4"
+            },
+            {
+              "name": "namespace",
+              "value": "hiring-benchmarks"
+            },
+            {
+              "name": "includeMetadata",
+              "value": "=true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d5126898-0528-46fa-ae2f-027c10bdf116",
+      "name": "RAG \u2014 Pipeline",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const pineconeResult = $input.first().json;\nconst matches = pineconeResult.matches || [];\nconst ragContext = matches.length\n  ? matches.map((m, i) => '[' + (i+1) + '] ' + (m.metadata && m.metadata.text ? m.metadata.text : JSON.stringify(m.metadata))).join('\\n\\n')\n  : 'No context available.';\nconst { candidates } = $node['Routing Agent'].json;\nconst sourceCounts = {};\nconst sourceAccepted = {};\nfor (const c of candidates) {\n  sourceCounts[c.source] = (sourceCounts[c.source] || 0) + 1;\n  if (c.stage === 'Offer' && !c.offer_declined) {\n    sourceAccepted[c.source] = (sourceAccepted[c.source] || 0) + 1;\n  }\n}\nconst prompt = [\n  'You are a Sourcing Quality Agent for a hiring intelligence system.',\n  '',\n  'HISTORICAL BENCHMARKS (from knowledge base):',\n  ragContext,\n  '',\n  'CURRENT DATA:',\n  'Source channel counts: ' + JSON.stringify(sourceCounts),\n  'Accepted offers by source: ' + JSON.stringify(sourceAccepted),\n  '',\n  'Analyse the sourcing data above against the benchmarks. Respond ONLY with a JSON object in this exact format:',\n  '{',\n  '  \"recommendation\": \"<one clear actionable sentence>\",',\n  '  \"evidence\": { \"source_counts\": {}, \"accepted_by_source\": {}, \"key_insight\": \"<string>\" },',\n  '  \"confidence_score\": 0.0,',\n  '  \"cost_of_insight\": { \"model\": \"gpt-4o-mini\", \"estimated_tokens\": 0, \"estimated_usd\": 0.0 },',\n  '  \"alternative\": { \"model\": \"gpt-4o\", \"trade_off\": \"<string>\" }',\n  '}'\n].join('\\n');\nconst start_time = Date.now();\nreturn [{ json: { start_time, prompt, rag_context: ragContext, source_counts: sourceCounts, source_accepted: sourceAccepted } }];"
+      },
+      "id": "046f1b59-2940-4636-97a8-e91f8462ceab",
+      "name": "Prepare Prompt \u2014 Sourcing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const pineconeResult = $input.first().json;\nconst matches = pineconeResult.matches || [];\nconst ragContext = matches.length\n  ? matches.map((m, i) => '[' + (i+1) + '] ' + (m.metadata && m.metadata.text ? m.metadata.text : JSON.stringify(m.metadata))).join('\\n\\n')\n  : 'No context available.';\nconst { candidates } = $node['Routing Agent'].json;\nconst rejected = candidates.filter(c => c.stage === 'Rejected');\nconst reasons = {};\nfor (const c of rejected) {\n  const r = c.rejection_reason || 'Unknown';\n  reasons[r] = (reasons[r] || 0) + 1;\n}\nconst prompt = [\n  'You are a Rejection Pattern Agent for a hiring intelligence system.',\n  '',\n  'HISTORICAL BENCHMARKS (from knowledge base):',\n  ragContext,\n  '',\n  'CURRENT DATA:',\n  'Total rejections: ' + rejected.length,\n  'Rejection reasons breakdown: ' + JSON.stringify(reasons),\n  '',\n  'Analyse the rejection patterns above against industry benchmarks. Respond ONLY with a JSON object in this exact format:',\n  '{',\n  '  \"recommendation\": \"<one clear actionable sentence>\",',\n  '  \"evidence\": { \"total_rejections\": 0, \"reasons_breakdown\": {}, \"key_insight\": \"<string>\" },',\n  '  \"confidence_score\": 0.0,',\n  '  \"cost_of_insight\": { \"model\": \"gpt-4o\", \"estimated_tokens\": 0, \"estimated_usd\": 0.0 },',\n  '  \"alternative\": { \"model\": \"gpt-4o-mini\", \"trade_off\": \"<string>\" }',\n  '}'\n].join('\\n');\nconst start_time = Date.now();\nreturn [{ json: { start_time, prompt, rag_context: ragContext, rejected_count: rejected.length, reasons } }];"
+      },
+      "id": "b09d2eec-8513-48fb-9fea-0daa3dbdee5b",
+      "name": "Prepare Prompt \u2014 Rejection",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const pineconeResult = $input.first().json;\nconst matches = pineconeResult.matches || [];\nconst ragContext = matches.length\n  ? matches.map((m, i) => '[' + (i+1) + '] ' + (m.metadata && m.metadata.text ? m.metadata.text : JSON.stringify(m.metadata))).join('\\n\\n')\n  : 'No context available.';\nconst { interviewers } = $node['Routing Agent'].json;\nconst prompt = [\n  'You are a Panel Load Balancer Agent for a hiring intelligence system.',\n  '',\n  'HISTORICAL BENCHMARKS (from knowledge base):',\n  ragContext,\n  '',\n  'CURRENT DATA:',\n  'Interviewer panel loads: ' + JSON.stringify(interviewers),\n  '',\n  'Analyse the panel load data against capacity benchmarks. Respond ONLY with a JSON object in this exact format:',\n  '{',\n  '  \"recommendation\": \"<one clear actionable sentence>\",',\n  '  \"evidence\": { \"overloaded\": [], \"underloaded\": [], \"key_insight\": \"<string>\" },',\n  '  \"confidence_score\": 0.0,',\n  '  \"cost_of_insight\": { \"model\": \"gpt-4o-mini\", \"estimated_tokens\": 0, \"estimated_usd\": 0.0 },',\n  '  \"alternative\": { \"model\": \"gpt-4o\", \"trade_off\": \"<string>\" }',\n  '}'\n].join('\\n');\nconst start_time = Date.now();\nreturn [{ json: { start_time, prompt, rag_context: ragContext, interviewers } }];"
+      },
+      "id": "42e3d271-5906-4d2b-8100-e3f7f33c93c4",
+      "name": "Prepare Prompt \u2014 Panel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const pineconeResult = $input.first().json;\nconst matches = pineconeResult.matches || [];\nconst ragContext = matches.length\n  ? matches.map((m, i) => '[' + (i+1) + '] ' + (m.metadata && m.metadata.text ? m.metadata.text : JSON.stringify(m.metadata))).join('\\n\\n')\n  : 'No context available.';\nconst { candidates } = $node['Routing Agent'].json;\nconst offers = candidates.filter(c => c.stage === 'Offer');\nconst declined = offers.filter(c => c.offer_declined);\nconst declineRate = offers.length ? (declined.length / offers.length) : 0;\nconst prompt = [\n  'You are an Offer Insights Agent for a hiring intelligence system.',\n  '',\n  'HISTORICAL BENCHMARKS (from knowledge base):',\n  ragContext,\n  '',\n  'CURRENT DATA:',\n  'Total offers: ' + offers.length,\n  'Offers declined: ' + declined.length,\n  'Decline rate: ' + (declineRate * 100).toFixed(1) + '%',\n  '',\n  'Analyse the offer data against industry benchmarks. Respond ONLY with a JSON object in this exact format:',\n  '{',\n  '  \"recommendation\": \"<one clear actionable sentence>\",',\n  '  \"evidence\": { \"total_offers\": 0, \"declined\": 0, \"decline_rate\": 0.0, \"key_insight\": \"<string>\" },',\n  '  \"confidence_score\": 0.0,',\n  '  \"cost_of_insight\": { \"model\": \"gpt-4o\", \"estimated_tokens\": 0, \"estimated_usd\": 0.0 },',\n  '  \"alternative\": { \"model\": \"gpt-4o-mini\", \"trade_off\": \"<string>\" }',\n  '}'\n].join('\\n');\nconst start_time = Date.now();\nreturn [{ json: { start_time, prompt, rag_context: ragContext, total_offers: offers.length, declined: declined.length, decline_rate: declineRate } }];"
+      },
+      "id": "9a383d23-2499-47e2-aa3e-5dee803fcaff",
+      "name": "Prepare Prompt \u2014 Offer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const pineconeResult = $input.first().json;\nconst matches = pineconeResult.matches || [];\nconst ragContext = matches.length\n  ? matches.map((m, i) => '[' + (i+1) + '] ' + (m.metadata && m.metadata.text ? m.metadata.text : JSON.stringify(m.metadata))).join('\\n\\n')\n  : 'No context available.';\nconst { candidates, open_roles } = $node['Routing Agent'].json;\nconst avgDays = candidates.reduce((s, c) => s + (c.days_in_pipeline || 0), 0) / (candidates.length || 1);\nconst breached = open_roles.filter(r => r.days_open > r.sla_days);\nconst prompt = [\n  'You are a Pipeline Health Agent for a hiring intelligence system.',\n  '',\n  'HISTORICAL BENCHMARKS (from knowledge base):',\n  ragContext,\n  '',\n  'CURRENT DATA:',\n  'Average days in pipeline: ' + avgDays.toFixed(1),\n  'Open roles: ' + JSON.stringify(open_roles),\n  'SLA breaches: ' + JSON.stringify(breached),\n  '',\n  'Analyse pipeline health against SLA benchmarks. Respond ONLY with a JSON object in this exact format:',\n  '{',\n  '  \"recommendation\": \"<one clear actionable sentence>\",',\n  '  \"evidence\": { \"avg_days_in_pipeline\": 0.0, \"sla_breaches\": [], \"key_insight\": \"<string>\" },',\n  '  \"confidence_score\": 0.0,',\n  '  \"cost_of_insight\": { \"model\": \"gpt-4o-mini\", \"estimated_tokens\": 0, \"estimated_usd\": 0.0 },',\n  '  \"alternative\": { \"model\": \"gpt-4o\", \"trade_off\": \"<string>\" }',\n  '}'\n].join('\\n');\nconst start_time = Date.now();\nreturn [{ json: { start_time, prompt, rag_context: ragContext, avg_days: avgDays, open_roles, breached } }];"
+      },
+      "id": "b6d76998-9c1b-4f46-84ef-09edaca5030f",
+      "name": "Prepare Prompt \u2014 Pipeline",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are a Sourcing Quality Agent. Always respond with valid JSON only \u2014 no markdown, no explanation.",
+              "role": "system"
+            },
+            {
+              "content": "={{ $json.prompt }}"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 600,
+          "temperature": 0.2
+        }
+      },
+      "id": "0d2068c8-ef88-4f20-8ee0-a7456d9e6945",
+      "name": "OpenAI \u2014 Sourcing",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1168,
+        0
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "frfXi2fWlgCQwOhG",
+          "name": "IK OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are a Rejection Pattern Agent. Always respond with valid JSON only \u2014 no markdown, no explanation.",
+              "role": "system"
+            },
+            {
+              "content": "={{ $json.prompt }}"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 800,
+          "temperature": 0.2
+        }
+      },
+      "id": "b86257d6-242d-48cf-b144-70d9735fbd5c",
+      "name": "OpenAI \u2014 Rejection",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1168,
+        192
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "frfXi2fWlgCQwOhG",
+          "name": "IK OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are a Panel Load Balancer Agent. Always respond with valid JSON only \u2014 no markdown, no explanation.",
+              "role": "system"
+            },
+            {
+              "content": "={{ $json.prompt }}"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 600,
+          "temperature": 0.2
+        }
+      },
+      "id": "6c8a494b-0f2c-4ea4-b012-de9e3fc170ba",
+      "name": "OpenAI \u2014 Panel",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1168,
+        384
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "frfXi2fWlgCQwOhG",
+          "name": "IK OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are an Offer Insights Agent. Always respond with valid JSON only \u2014 no markdown, no explanation.",
+              "role": "system"
+            },
+            {
+              "content": "={{ $json.prompt }}"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 800,
+          "temperature": 0.2
+        }
+      },
+      "id": "93e974d0-c621-4d73-ae8f-c2c654cbd2a2",
+      "name": "OpenAI \u2014 Offer",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1168,
+        576
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "frfXi2fWlgCQwOhG",
+          "name": "IK OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are a Pipeline Health Agent. Always respond with valid JSON only \u2014 no markdown, no explanation.",
+              "role": "system"
+            },
+            {
+              "content": "={{ $json.prompt }}"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 600,
+          "temperature": 0.2
+        }
+      },
+      "id": "5406fe56-609d-4c40-a4ea-0f97c1c03eaf",
+      "name": "OpenAI \u2014 Pipeline",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1168,
+        768
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "frfXi2fWlgCQwOhG",
+          "name": "IK OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// \u2500\u2500 Inputs \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst openaiResp = $input.first().json;\nconst prepData   = $node['Prepare Prompt \u2014 Sourcing'].json;\n\n// \u2500\u2500 Latency \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst end_time   = Date.now();\nconst latency_ms = prepData.start_time ? (end_time - prepData.start_time) : null;\n\n// \u2500\u2500 Real token counts from OpenAI usage object \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst usage         = openaiResp.usage || {};\nconst prompt_tokens     = usage.prompt_tokens     || 0;\nconst completion_tokens = usage.completion_tokens || 0;\nconst total_tokens      = usage.total_tokens      || (prompt_tokens + completion_tokens);\n\n// \u2500\u2500 USD cost using model-specific rates \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst input_rate  = 0.00015;\nconst output_rate = 0.0006;\nconst estimated_usd = parseFloat(\n  ((prompt_tokens / 1000 * input_rate) + (completion_tokens / 1000 * output_rate)).toFixed(6)\n);\n\n// \u2500\u2500 Parse LLM response \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst raw = openaiResp.message?.content || openaiResp.text || '{}';\nlet parsed;\ntry {\n  parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());\n} catch(e) {\n  parsed = { recommendation: raw, parse_error: e.message };\n}\n\n// \u2500\u2500 Overwrite cost_of_insight with real numbers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nparsed.cost_of_insight = {\n  model:              'gpt-4o-mini',\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  input_rate_per_1k:  0.00015,\n  output_rate_per_1k: 0.0006,\n};\n\nreturn [{ json: {\n  agent: 'sourcing_quality',\n  ...parsed,\n  rag_context: prepData.rag_context,\n  latency_ms,\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  run_timestamp: new Date().toISOString(),\n} }];"
+      },
+      "id": "adb826f9-524e-4723-b205-ba7279891ece",
+      "name": "Parse Output \u2014 Sourcing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// \u2500\u2500 Inputs \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst openaiResp = $input.first().json;\nconst prepData   = $node['Prepare Prompt \u2014 Rejection'].json;\n\n// \u2500\u2500 Latency \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst end_time   = Date.now();\nconst latency_ms = prepData.start_time ? (end_time - prepData.start_time) : null;\n\n// \u2500\u2500 Real token counts from OpenAI usage object \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst usage         = openaiResp.usage || {};\nconst prompt_tokens     = usage.prompt_tokens     || 0;\nconst completion_tokens = usage.completion_tokens || 0;\nconst total_tokens      = usage.total_tokens      || (prompt_tokens + completion_tokens);\n\n// \u2500\u2500 USD cost using model-specific rates \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst input_rate  = 0.0025;\nconst output_rate = 0.01;\nconst estimated_usd = parseFloat(\n  ((prompt_tokens / 1000 * input_rate) + (completion_tokens / 1000 * output_rate)).toFixed(6)\n);\n\n// \u2500\u2500 Parse LLM response \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst raw = openaiResp.message?.content || openaiResp.text || '{}';\nlet parsed;\ntry {\n  parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());\n} catch(e) {\n  parsed = { recommendation: raw, parse_error: e.message };\n}\n\n// \u2500\u2500 Overwrite cost_of_insight with real numbers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nparsed.cost_of_insight = {\n  model:              'gpt-4o',\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  input_rate_per_1k:  0.0025,\n  output_rate_per_1k: 0.01,\n};\n\nreturn [{ json: {\n  agent: 'rejection_pattern',\n  ...parsed,\n  rag_context: prepData.rag_context,\n  latency_ms,\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  run_timestamp: new Date().toISOString(),\n} }];"
+      },
+      "id": "3d2c6730-6e78-47b2-9df4-3a5df09312fe",
+      "name": "Parse Output \u2014 Rejection",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// \u2500\u2500 Inputs \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst openaiResp = $input.first().json;\nconst prepData   = $node['Prepare Prompt \u2014 Panel'].json;\n\n// \u2500\u2500 Latency \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst end_time   = Date.now();\nconst latency_ms = prepData.start_time ? (end_time - prepData.start_time) : null;\n\n// \u2500\u2500 Real token counts from OpenAI usage object \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst usage         = openaiResp.usage || {};\nconst prompt_tokens     = usage.prompt_tokens     || 0;\nconst completion_tokens = usage.completion_tokens || 0;\nconst total_tokens      = usage.total_tokens      || (prompt_tokens + completion_tokens);\n\n// \u2500\u2500 USD cost using model-specific rates \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst input_rate  = 0.00015;\nconst output_rate = 0.0006;\nconst estimated_usd = parseFloat(\n  ((prompt_tokens / 1000 * input_rate) + (completion_tokens / 1000 * output_rate)).toFixed(6)\n);\n\n// \u2500\u2500 Parse LLM response \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst raw = openaiResp.message?.content || openaiResp.text || '{}';\nlet parsed;\ntry {\n  parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());\n} catch(e) {\n  parsed = { recommendation: raw, parse_error: e.message };\n}\n\n// \u2500\u2500 Overwrite cost_of_insight with real numbers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nparsed.cost_of_insight = {\n  model:              'gpt-4o-mini',\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  input_rate_per_1k:  0.00015,\n  output_rate_per_1k: 0.0006,\n};\n\nreturn [{ json: {\n  agent: 'panel_load_balancer',\n  ...parsed,\n  rag_context: prepData.rag_context,\n  latency_ms,\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  run_timestamp: new Date().toISOString(),\n} }];"
+      },
+      "id": "87c353f4-880b-4ae4-8741-9127d592ba46",
+      "name": "Parse Output \u2014 Panel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// \u2500\u2500 Inputs \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst openaiResp = $input.first().json;\nconst prepData   = $node['Prepare Prompt \u2014 Offer'].json;\n\n// \u2500\u2500 Latency \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst end_time   = Date.now();\nconst latency_ms = prepData.start_time ? (end_time - prepData.start_time) : null;\n\n// \u2500\u2500 Real token counts from OpenAI usage object \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst usage         = openaiResp.usage || {};\nconst prompt_tokens     = usage.prompt_tokens     || 0;\nconst completion_tokens = usage.completion_tokens || 0;\nconst total_tokens      = usage.total_tokens      || (prompt_tokens + completion_tokens);\n\n// \u2500\u2500 USD cost using model-specific rates \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst input_rate  = 0.0025;\nconst output_rate = 0.01;\nconst estimated_usd = parseFloat(\n  ((prompt_tokens / 1000 * input_rate) + (completion_tokens / 1000 * output_rate)).toFixed(6)\n);\n\n// \u2500\u2500 Parse LLM response \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst raw = openaiResp.message?.content || openaiResp.text || '{}';\nlet parsed;\ntry {\n  parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());\n} catch(e) {\n  parsed = { recommendation: raw, parse_error: e.message };\n}\n\n// \u2500\u2500 Overwrite cost_of_insight with real numbers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nparsed.cost_of_insight = {\n  model:              'gpt-4o',\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  input_rate_per_1k:  0.0025,\n  output_rate_per_1k: 0.01,\n};\n\nreturn [{ json: {\n  agent: 'offer_insights',\n  ...parsed,\n  rag_context: prepData.rag_context,\n  latency_ms,\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  run_timestamp: new Date().toISOString(),\n} }];"
+      },
+      "id": "28024fb9-6683-4845-86a1-b97e330b8d43",
+      "name": "Parse Output \u2014 Offer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// \u2500\u2500 Inputs \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst openaiResp = $input.first().json;\nconst prepData   = $node['Prepare Prompt \u2014 Pipeline'].json;\n\n// \u2500\u2500 Latency \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst end_time   = Date.now();\nconst latency_ms = prepData.start_time ? (end_time - prepData.start_time) : null;\n\n// \u2500\u2500 Real token counts from OpenAI usage object \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst usage         = openaiResp.usage || {};\nconst prompt_tokens     = usage.prompt_tokens     || 0;\nconst completion_tokens = usage.completion_tokens || 0;\nconst total_tokens      = usage.total_tokens      || (prompt_tokens + completion_tokens);\n\n// \u2500\u2500 USD cost using model-specific rates \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst input_rate  = 0.00015;\nconst output_rate = 0.0006;\nconst estimated_usd = parseFloat(\n  ((prompt_tokens / 1000 * input_rate) + (completion_tokens / 1000 * output_rate)).toFixed(6)\n);\n\n// \u2500\u2500 Parse LLM response \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst raw = openaiResp.message?.content || openaiResp.text || '{}';\nlet parsed;\ntry {\n  parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());\n} catch(e) {\n  parsed = { recommendation: raw, parse_error: e.message };\n}\n\n// \u2500\u2500 Overwrite cost_of_insight with real numbers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nparsed.cost_of_insight = {\n  model:              'gpt-4o-mini',\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  input_rate_per_1k:  0.00015,\n  output_rate_per_1k: 0.0006,\n};\n\nreturn [{ json: {\n  agent: 'pipeline_health',\n  ...parsed,\n  rag_context: prepData.rag_context,\n  latency_ms,\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  run_timestamp: new Date().toISOString(),\n} }];"
+      },
+      "id": "9d3bb39d-5a9e-45a8-a9ac-af212210f92c",
+      "name": "Parse Output \u2014 Pipeline",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        768
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "11fdcf2f-7d82-4733-9994-13240d03ac5b",
+      "name": "Merge Agent Outputs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1744,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const insights = $input.all().map(i => i.json);\nconst evaluated = insights.map(insight => {\n  const hasRag = !!(insight.rag_context && insight.rag_context.length > 50);\n  const scores = {\n    actionability: insight.recommendation && insight.recommendation.length > 60 ? 1.0 : 0.5,\n    grounding:     hasRag ? 1.0 : 0.3,\n    confidence:    (insight.confidence_score || 0) >= 0.7 ? 1.0 : 0.6,\n    schema_valid:  ['recommendation','evidence','confidence_score','cost_of_insight','alternative'].every(f => f in insight) ? 1.0 : 0.0,\n    rag_grounded:  hasRag ? 1.0 : 0.0\n  };\n  const overall = Object.values(scores).reduce((a,b)=>a+b,0) / Object.keys(scores).length;\n  return { ...insight, eval_scores: scores, eval_overall: parseFloat(overall.toFixed(2)), rag_grounded: hasRag };\n});\nreturn evaluated.map(e => ({ json: e }));"
+      },
+      "id": "e4319b20-bc9a-4129-bc4a-9f314fd67e00",
+      "name": "Evaluation Agent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1968,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const insights = $input.all().map(i => i.json);\n\n// \u2500\u2500 Real totals from actual token usage \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst totalUSD    = insights.reduce((s, i) => s + (i.estimated_usd   || 0), 0);\nconst totalTokens = insights.reduce((s, i) => s + (i.total_tokens    || 0), 0);\nconst totalPrompt = insights.reduce((s, i) => s + (i.prompt_tokens   || 0), 0);\nconst totalCompl  = insights.reduce((s, i) => s + (i.completion_tokens || 0), 0);\nconst ragGrounded = insights.filter(i => i.rag_grounded).length;\n\n// \u2500\u2500 Per-agent cost breakdown \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst costByAgent = insights.map(i => ({\n  agent:             i.agent,\n  model:             i.cost_of_insight?.model,\n  prompt_tokens:     i.prompt_tokens     || 0,\n  completion_tokens: i.completion_tokens || 0,\n  total_tokens:      i.total_tokens      || 0,\n  estimated_usd:     i.estimated_usd     || 0,\n  latency_ms:        i.latency_ms        || null,\n}));\n\n// \u2500\u2500 Latency stats \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst latencies   = insights.map(i => i.latency_ms).filter(l => l !== null);\nconst avgLatency  = latencies.length\n  ? Math.round(latencies.reduce((a,b) => a+b, 0) / latencies.length)\n  : null;\nconst maxLatency  = latencies.length ? Math.max(...latencies) : null;\nconst slowAgent   = latencies.length\n  ? insights.find(i => i.latency_ms === maxLatency)?.agent\n  : null;\n\n// \u2500\u2500 Optimization suggestions based on real cost \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst suggestions = [];\nfor (const a of costByAgent) {\n  if (a.model === 'gpt-4o' && (a.estimated_usd || 0) > 0.001) {\n    const saving = parseFloat((a.estimated_usd * 0.7).toFixed(6));\n    suggestions.push(\n      'Downgrade ' + a.agent + ' from gpt-4o to gpt-4o-mini '\n      + '(est. saving $' + saving + ' per run, ~70% reduction).'\n    );\n  }\n  if ((a.latency_ms || 0) > 8000) {\n    suggestions.push(\n      a.agent + ' latency is ' + a.latency_ms + 'ms \u2014 consider prompt compression to reduce tokens.'\n    );\n  }\n}\nif (!suggestions.length) suggestions.push('All agents within cost and latency targets.');\n\n// \u2500\u2500 Before/after optimization simulation \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst gpt4oAgents = costByAgent.filter(a => a.model === 'gpt-4o');\nconst potentialSaving = gpt4oAgents.reduce((s, a) => s + (a.estimated_usd * 0.7), 0);\n\nreturn [{ json: {\n  optimization_report: {\n    total_usd:             parseFloat(totalUSD.toFixed(6)),\n    total_tokens:          totalTokens,\n    total_prompt_tokens:   totalPrompt,\n    total_completion_tokens: totalCompl,\n    avg_latency_ms:        avgLatency,\n    max_latency_ms:        maxLatency,\n    slowest_agent:         slowAgent,\n    rag_grounding_rate:    ragGrounded + '/' + insights.length,\n    cost_by_agent:         costByAgent,\n    potential_saving_usd:  parseFloat(potentialSaving.toFixed(6)),\n    suggestions,\n  },\n  insights,\n} }];"
+      },
+      "id": "103b1b3d-0e98-4721-b1ef-bcc8ea893f5f",
+      "name": "Optimization Agent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2192,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { optimization_report, insights } = $input.first().json;\nreturn [{ json: {\n  status: 'complete',\n  run_summary: {\n    agents_run:          insights.length,\n    total_cost_usd:      optimization_report.total_usd,\n    total_tokens:        optimization_report.total_tokens,\n    prompt_tokens:       optimization_report.total_prompt_tokens,\n    completion_tokens:   optimization_report.total_completion_tokens,\n    avg_latency_ms:      optimization_report.avg_latency_ms,\n    max_latency_ms:      optimization_report.max_latency_ms,\n    slowest_agent:       optimization_report.slowest_agent,\n    rag_grounding_rate:  optimization_report.rag_grounding_rate,\n    potential_saving_usd: optimization_report.potential_saving_usd,\n  },\n  insights,\n  optimization_report,\n  generated_at: new Date().toISOString(),\n} }];"
+      },
+      "id": "92df9dfc-725b-48d3-be55-bf27a916f056",
+      "name": "Final Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2416,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.github.com/repos/YOUR_GITHUB_USERNAME/hiring-intelligence-dashboard/contents/data/latest_run.json",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GITHUB_TOKEN"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "github-get-sha-01",
+      "name": "Get File SHA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2416,
+        -80
+      ],
+      "notes": "Gets current file SHA \u2014 required by GitHub API to update an existing file. Returns 404 on first run (handled gracefully)."
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "https://api.github.com/repos/YOUR_GITHUB_USERNAME/hiring-intelligence-dashboard/contents/data/latest_run.json",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GITHUB_TOKEN"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "=`n8n run \u2014 ${new Date().toISOString()}`"
+            },
+            {
+              "name": "content",
+              "value": "={{Buffer.from(JSON.stringify($input.first().json, null, 2)).toString('base64')}}"
+            },
+            {
+              "name": "sha",
+              "value": "={{$node['Get File SHA'].json?.object?.sha || $node['Get File SHA'].json?.sha || ''}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "github-write-01",
+      "name": "Push to GitHub",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2656,
+        96
+      ],
+      "notes": "Writes Final Output JSON to GitHub repo so Streamlit can read it automatically"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Ingest & Normalise Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest & Normalise Data": {
+      "main": [
+        [
+          {
+            "node": "Routing Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Routing Agent": {
+      "main": [
+        [
+          {
+            "node": "Embed Query \u2014 Sourcing Quality",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Embed Query \u2014 Rejection Pattern",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Embed Query \u2014 Panel Load Balancer",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Embed Query \u2014 Offer Insights",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Embed Query \u2014 Pipeline Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RAG \u2014 Sourcing": {
+      "main": [
+        [
+          {
+            "node": "Prepare Prompt \u2014 Sourcing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RAG \u2014 Rejection": {
+      "main": [
+        [
+          {
+            "node": "Prepare Prompt \u2014 Rejection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RAG \u2014 Panel": {
+      "main": [
+        [
+          {
+            "node": "Prepare Prompt \u2014 Panel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RAG \u2014 Offer": {
+      "main": [
+        [
+          {
+            "node": "Prepare Prompt \u2014 Offer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RAG \u2014 Pipeline": {
+      "main": [
+        [
+          {
+            "node": "Prepare Prompt \u2014 Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Prompt \u2014 Sourcing": {
+      "main": [
+        [
+          {
+            "node": "OpenAI \u2014 Sourcing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Prompt \u2014 Rejection": {
+      "main": [
+        [
+          {
+            "node": "OpenAI \u2014 Rejection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Prompt \u2014 Panel": {
+      "main": [
+        [
+          {
+            "node": "OpenAI \u2014 Panel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Prompt \u2014 Offer": {
+      "main": [
+        [
+          {
+            "node": "OpenAI \u2014 Offer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Prompt \u2014 Pipeline": {
+      "main": [
+        [
+          {
+            "node": "OpenAI \u2014 Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI \u2014 Sourcing": {
+      "main": [
+        [
+          {
+            "node": "Parse Output \u2014 Sourcing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI \u2014 Rejection": {
+      "main": [
+        [
+          {
+            "node": "Parse Output \u2014 Rejection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI \u2014 Panel": {
+      "main": [
+        [
+          {
+            "node": "Parse Output \u2014 Panel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI \u2014 Offer": {
+      "main": [
+        [
+          {
+            "node": "Parse Output \u2014 Offer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI \u2014 Pipeline": {
+      "main": [
+        [
+          {
+            "node": "Parse Output \u2014 Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Output \u2014 Sourcing": {
+      "main": [
+        [
+          {
+            "node": "Merge Agent Outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Output \u2014 Rejection": {
+      "main": [
+        [
+          {
+            "node": "Merge Agent Outputs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Agent Outputs": {
+      "main": [
+        [
+          {
+            "node": "Evaluation Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluation Agent": {
+      "main": [
+        [
+          {
+            "node": "Optimization Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Optimization Agent": {
+      "main": [
+        [
+          {
+            "node": "Final Output",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get File SHA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed Query \u2014 Sourcing Quality": {
+      "main": [
+        [
+          {
+            "node": "Extract Vector \u2014 Sourcing Quality",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Vector \u2014 Sourcing Quality": {
+      "main": [
+        [
+          {
+            "node": "RAG \u2014 Sourcing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed Query \u2014 Rejection Pattern": {
+      "main": [
+        [
+          {
+            "node": "Extract Vector \u2014 Rejection Pattern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Vector \u2014 Rejection Pattern": {
+      "main": [
+        [
+          {
+            "node": "RAG \u2014 Rejection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed Query \u2014 Panel Load Balancer": {
+      "main": [
+        [
+          {
+            "node": "Extract Vector \u2014 Panel Load Balancer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Vector \u2014 Panel Load Balancer": {
+      "main": [
+        [
+          {
+            "node": "RAG \u2014 Panel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed Query \u2014 Offer Insights": {
+      "main": [
+        [
+          {
+            "node": "Extract Vector \u2014 Offer Insights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Vector \u2014 Offer Insights": {
+      "main": [
+        [
+          {
+            "node": "RAG \u2014 Offer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed Query \u2014 Pipeline Health": {
+      "main": [
+        [
+          {
+            "node": "Extract Vector \u2014 Pipeline Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Vector \u2014 Pipeline Health": {
+      "main": [
+        [
+          {
+            "node": "RAG \u2014 Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Output \u2014 Panel": {
+      "main": [
+        [
+          {
+            "node": "Merge Agent Outputs",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Parse Output \u2014 Offer": {
+      "main": [
+        [
+          {
+            "node": "Merge Agent Outputs",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Parse Output \u2014 Pipeline": {
+      "main": [
+        [
+          {
+            "node": "Merge Agent Outputs",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Final Output": {
+      "main": [
+        [
+          {
+            "node": "Push to GitHub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "7daa5eaf-d076-44a8-a742-9889964c51cb",
+  "meta": {
+    "instanceId": "76f1edadfc44187b235ad30dca4f13c2c8477f08431c30d661a49fb889397ef5"
+  },
+  "id": "gNLk0Vn3OVOWLL1r",
+  "tags": []
+}
