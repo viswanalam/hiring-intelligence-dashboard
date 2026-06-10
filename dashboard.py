@@ -91,7 +91,7 @@ def fmt_ts(iso_str):
         return iso_str
 
 # ── GITHUB LOADER ─────────────────────────────────────────────────────────────
-@st.cache_data(ttl=60)
+@st.cache_data()
 def load_from_github():
     try:
         token   = st.secrets.get("GITHUB_TOKEN", "")
@@ -196,7 +196,7 @@ with st.sidebar:
     page = st.radio("Navigate", ["Overview","Agent Insights","Pipeline Funnel","Interviewer Load","Evaluation","Cost & Latency"], label_visibility="collapsed")
     st.markdown("---")
     st.caption(f"Timezone: {DISPLAY_TIMEZONE}")
-    st.caption("Auto-refreshes every 60s")
+    st.caption("Click ↻ Refresh to load latest run.")
 
 
 # ════════════════════════════════════════════════════════════════════════════
