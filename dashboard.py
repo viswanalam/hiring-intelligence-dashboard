@@ -218,6 +218,18 @@ github_data, source, error = load_from_github()
 data        = github_data if github_data else DEMO
 data_source = "live" if github_data else "demo"
 
+# Sanity check — verify live data has expected shape
+data_warnings = []
+if data_source == "live":
+    if not data.get("pipeline_stats"):
+        data_warnings.append("pipeline_stats missing — re-import the v104 workflow and run again")
+    if not data.get("insights"):
+        data_warnings.append("insights array empty — check that 'Aggregate Agent Outputs' fired")
+    if not data.get("cost_optimization"):
+        data_warnings.append("cost_optimization missing — check that 'Cost & Optimization Agent' ran")
+    if not data.get("evaluation_summary"):
+        data_warnings.append("evaluation_summary missing — check that 'Eval Output Capture' ran")
+
 insights      = data.get("insights", [])
 eval_summary  = data.get("evaluation_summary", {})
 cost_opt      = data.get("cost_optimization", {})
@@ -241,6 +253,10 @@ with st.sidebar:
     st.caption(f"Last run: {ts}")
     if data_source == "demo" and error:
         st.caption(error)
+    if data_warnings:
+        st.warning("⚠ Live data shape issues:")
+        for w in data_warnings:
+            st.caption(f"• {w}")
     if st.button("↻ Refresh"):
         st.cache_data.clear()
         st.rerun()
@@ -510,8 +526,9 @@ elif page == "Evaluation":
         _, tag_cls, label = AGENT_COLOURS[ak]
         ev = ins.get("evaluation", {})
 
-        with st.expander(f"**{label}** — {verdict_badge(ev.get('verdict','—'))} · Combined: {ev.get('combined_score',0):.2f}", expanded=False):
-            st.markdown(f'<span class="insight-agent-tag {tag_cls}">{label}</span>', unsafe_allow_html=True)
+        verdict_text = ev.get("verdict", "—").upper()
+        with st.expander(f"**{label}** — [{verdict_text}] · Combined: {ev.get('combined_score',0):.2f}", expanded=False):
+            st.markdown(f'<span class="insight-agent-tag {tag_cls}">{label}</span>  {verdict_badge(ev.get("verdict","—"))}', unsafe_allow_html=True)
 
             col1, col2 = st.columns(2)
             with col1:
