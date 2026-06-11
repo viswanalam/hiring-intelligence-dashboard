@@ -1,16 +1,23 @@
 {
   "status": "complete",
-  "generated_at": "2026-06-11T19:48:04.906Z",
+  "generated_at": "2026-06-11T20:06:36.982Z",
   "run_summary": {
-    "agents_run": 5,
+    "agents_run": 1,
     "total_cost_usd": 0,
+    "insights_cost_usd": 0,
+    "eval_cost_usd": 0,
     "total_tokens": 0,
     "prompt_tokens": 0,
     "completion_tokens": 0,
-    "avg_latency_ms": 5804,
-    "max_latency_ms": 9108,
+    "avg_latency_ms": 9121,
+    "max_latency_ms": 9121,
+    "p95_latency_ms": 9121,
     "slowest_agent": "sourcing_quality",
-    "rag_grounding_rate": "5/5",
+    "most_expensive_agent": "sourcing_quality",
+    "rag_usage_rate": 1,
+    "eval_method": "llm_as_judge_with_golden_dataset",
+    "eval_pass_rate": 1,
+    "eval_avg_score": 0.96,
     "potential_saving_usd": 0
   },
   "pipeline_stats": {
@@ -217,7 +224,7 @@
   "insights": [
     {
       "agent": "sourcing_quality",
-      "recommendation": "Reallocate budget from LinkedIn to Referral and Recruiter Outreach due to their higher offer rates.",
+      "recommendation": "Reallocate budget from LinkedIn to strengthen investment in Referral and Recruiter Outreach channels.",
       "evidence": {
         "source_counts": {
           "AngelList": 27,
@@ -239,9 +246,9 @@
           "Referral": 4,
           "LinkedIn": 1
         },
-        "key_insight": "Referral has the highest offer rate at 41.2%, while LinkedIn has the lowest at 12.5%, warranting budget reallocation."
+        "key_insight": "Referral shows the best offer and acceptance rates, while LinkedIn has the lowest performance, indicating a need for budget reallocation."
       },
-      "confidence_score": 0.9,
+      "confidence_score": 0.85,
       "cost_of_insight": {
         "model": "gpt-4o-mini",
         "prompt_tokens": 0,
@@ -254,11 +261,11 @@
       },
       "alternative": {
         "model": "gpt-4o",
-        "trade_off": "Using a model with higher token limits could provide more nuanced insights at an increased cost."
+        "trade_off": "Higher cost and longer analysis time for potentially deeper insights."
       },
-      "rag_context": "[{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Sourcing channel performance summary (200 candidates). Referral leads all channels with a 41.2% offer rate and 57.1% acceptance rate — making it the highest ROI channel. Recruiter Outreach is second at 37.5% offer rate with 55.6% acceptance. Hackathon has a strong 32.3% offer rate but only 40.0% acceptance, suggesting strong initial fit but weak closing. LinkedIn has the worst offer rate at 12.5% with 50% acceptance — high screening cost, low yield.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"sourcing_quality\\\",\\\"category\\\":\\\"channel_performance\\\"},\\\"id\\\":\\\"src-001\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Offer acceptance rates by sourcing channel. Company Website converts best once an offer is made: 85.7% acceptance rate (6 of 7 offers). Glassdoor is second at 77.8% (7 of 9). AngelList and LinkedIn both sit at 50.0%. Hackathon is the weakest closer at 40.0% — candidates from events may be passively exploring. Benchmark: industry average offer acceptance is 70-75%; channels below 55% warrant re-evaluation.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"sourcing_quality\\\",\\\"category\\\":\\\"channel_acceptance\\\"},\\\"id\\\":\\\"src-002\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Sourcing channel optimization recommendations based on hiring data. Priority actions: (1) Double down on Referral — highest offer rate, lowest dropout; (2) Invest in Recruiter Outreach for senior/staff roles — 37.5% offer rate; (3) Reduce LinkedIn budget — 12.5% offer rate does not justify cost; (4) Glassdoor has solid acceptance rate (77.8%) — maintain current spend; (5) Hackathon sourcing works for initial pipeline but needs better closing strategy. Overall pipeline conversion from application to offer: 28.5% (57 offers from 200 candidates).\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"sourcing_quality\\\",\\\"category\\\":\\\"channel_optimization\\\"},\\\"id\\\":\\\"src-006\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Industry sourcing benchmarks for engineering and technical roles. Best-in-class offer rates by channel: Referral 40-55%, Recruiter Outreach 30-45%, Job Boards (Indeed/Glassdoor) 20-35%, LinkedIn 15-25%, Hackathons 25-35%. Typical offer acceptance rate benchmark: 72-78% for senior roles, 65-70% for mid-level. Time-to-source benchmark: Referral 8-12 days, LinkedIn 18-25 days, Job Boards 14-20 days. Cost-per-hire benchmark: Referral lowest ($1,500-3,000), Agency/Recruiter highest ($15,000-25,000).\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"sourcing_quality\\\",\\\"category\\\":\\\"industry_benchmark\\\"},\\\"id\\\":\\\"src-004\\\"}\"}]\n\n[{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Sourcing channel performance summary (200 candidates). Referral leads all channels with a 41.2% offer rate and 57.1% acceptance rate — making it the highest ROI channel. Recruiter Outreach is second at 37.5% offer rate with 55.6% acceptance. Hackathon has a strong 32.3% offer rate but only 40.0% acceptance, suggesting strong initial fit but weak closing. LinkedIn has the worst offer rate at 12.5% with 50% acceptance — high screening cost, low yield.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"sourcing_quality\\\",\\\"category\\\":\\\"channel_performance\\\"},\\\"id\\\":\\\"src-001\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Sourcing effectiveness by position type. Engineering roles (102 of 200 candidates, 51%) are sourced across all channels. Data Science (41 candidates, 20.5%) responds best to Hackathon and Referral. Product (38 candidates, 19%) sourced primarily via Company Website and LinkedIn. Design (19 candidates, 9.5%) — smallest pool — sourced mostly via Referral and Glassdoor. Recommendation: tailor channel strategy per role type rather than using a single mix.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"sourcing_quality\\\",\\\"category\\\":\\\"role_type_sourcing\\\"},\\\"id\\\":\\\"src-005\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Sourcing channel optimization recommendations based on hiring data. Priority actions: (1) Double down on Referral — highest offer rate, lowest dropout; (2) Invest in Recruiter Outreach for senior/staff roles — 37.5% offer rate; (3) Reduce LinkedIn budget — 12.5% offer rate does not justify cost; (4) Glassdoor has solid acceptance rate (77.8%) — maintain current spend; (5) Hackathon sourcing works for initial pipeline but needs better closing strategy. Overall pipeline conversion from application to offer: 28.5% (57 offers from 200 candidates).\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"sourcing_quality\\\",\\\"category\\\":\\\"channel_optimization\\\"},\\\"id\\\":\\\"src-006\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Channel volume vs quality trade-off. Company Website and Glassdoor each sourced 31 candidates (highest volume). Hackathon also at 31. LinkedIn sourced only 16 but had the worst offer rate. Referral sourced only 17 candidates — lowest volume — but best offer rate (41.2%). Recommendation: increase Referral program investment; reduce LinkedIn spend. AngelList (27 candidates, 22.2% offer rate, 50% acceptance) under-performs its effort.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"sourcing_quality\\\",\\\"category\\\":\\\"channel_volume_vs_quality\\\"},\\\"id\\\":\\\"src-003\\\"}\"}]",
+      "rag_context": "[{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Sourcing channel performance summary (200 candidates). Referral leads all channels with a 41.2% offer rate and 57.1% acceptance rate — making it the highest ROI channel. Recruiter Outreach is second at 37.5% offer rate with 55.6% acceptance. Hackathon has a strong 32.3% offer rate but only 40.0% acceptance, suggesting strong initial fit but weak closing. LinkedIn has the worst offer rate at 12.5% with 50% acceptance — high screening cost, low yield.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"sourcing_quality\\\",\\\"category\\\":\\\"channel_performance\\\"},\\\"id\\\":\\\"src-001\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Offer acceptance rates by sourcing channel. Company Website converts best once an offer is made: 85.7% acceptance rate (6 of 7 offers). Glassdoor is second at 77.8% (7 of 9). AngelList and LinkedIn both sit at 50.0%. Hackathon is the weakest closer at 40.0% — candidates from events may be passively exploring. Benchmark: industry average offer acceptance is 70-75%; channels below 55% warrant re-evaluation.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"sourcing_quality\\\",\\\"category\\\":\\\"channel_acceptance\\\"},\\\"id\\\":\\\"src-002\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Sourcing channel optimization recommendations based on hiring data. Priority actions: (1) Double down on Referral — highest offer rate, lowest dropout; (2) Invest in Recruiter Outreach for senior/staff roles — 37.5% offer rate; (3) Reduce LinkedIn budget — 12.5% offer rate does not justify cost; (4) Glassdoor has solid acceptance rate (77.8%) — maintain current spend; (5) Hackathon sourcing works for initial pipeline but needs better closing strategy. Overall pipeline conversion from application to offer: 28.5% (57 offers from 200 candidates).\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"sourcing_quality\\\",\\\"category\\\":\\\"channel_optimization\\\"},\\\"id\\\":\\\"src-006\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Industry sourcing benchmarks for engineering and technical roles. Best-in-class offer rates by channel: Referral 40-55%, Recruiter Outreach 30-45%, Job Boards (Indeed/Glassdoor) 20-35%, LinkedIn 15-25%, Hackathons 25-35%. Typical offer acceptance rate benchmark: 72-78% for senior roles, 65-70% for mid-level. Time-to-source benchmark: Referral 8-12 days, LinkedIn 18-25 days, Job Boards 14-20 days. Cost-per-hire benchmark: Referral lowest ($1,500-3,000), Agency/Recruiter highest ($15,000-25,000).\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"sourcing_quality\\\",\\\"category\\\":\\\"industry_benchmark\\\"},\\\"id\\\":\\\"src-004\\\"}\"}]\n\n[{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Sourcing channel performance summary (200 candidates). Referral leads all channels with a 41.2% offer rate and 57.1% acceptance rate — making it the highest ROI channel. Recruiter Outreach is second at 37.5% offer rate with 55.6% acceptance. Hackathon has a strong 32.3% offer rate but only 40.0% acceptance, suggesting strong initial fit but weak closing. LinkedIn has the worst offer rate at 12.5% with 50% acceptance — high screening cost, low yield.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"sourcing_quality\\\",\\\"category\\\":\\\"channel_performance\\\"},\\\"id\\\":\\\"src-001\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Industry sourcing benchmarks for engineering and technical roles. Best-in-class offer rates by channel: Referral 40-55%, Recruiter Outreach 30-45%, Job Boards (Indeed/Glassdoor) 20-35%, LinkedIn 15-25%, Hackathons 25-35%. Typical offer acceptance rate benchmark: 72-78% for senior roles, 65-70% for mid-level. Time-to-source benchmark: Referral 8-12 days, LinkedIn 18-25 days, Job Boards 14-20 days. Cost-per-hire benchmark: Referral lowest ($1,500-3,000), Agency/Recruiter highest ($15,000-25,000).\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"sourcing_quality\\\",\\\"category\\\":\\\"industry_benchmark\\\"},\\\"id\\\":\\\"src-004\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Sourcing effectiveness by position type. Engineering roles (102 of 200 candidates, 51%) are sourced across all channels. Data Science (41 candidates, 20.5%) responds best to Hackathon and Referral. Product (38 candidates, 19%) sourced primarily via Company Website and LinkedIn. Design (19 candidates, 9.5%) — smallest pool — sourced mostly via Referral and Glassdoor. Recommendation: tailor channel strategy per role type rather than using a single mix.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"sourcing_quality\\\",\\\"category\\\":\\\"role_type_sourcing\\\"},\\\"id\\\":\\\"src-005\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Sourcing channel optimization recommendations based on hiring data. Priority actions: (1) Double down on Referral — highest offer rate, lowest dropout; (2) Invest in Recruiter Outreach for senior/staff roles — 37.5% offer rate; (3) Reduce LinkedIn budget — 12.5% offer rate does not justify cost; (4) Glassdoor has solid acceptance rate (77.8%) — maintain current spend; (5) Hackathon sourcing works for initial pipeline but needs better closing strategy. Overall pipeline conversion from application to offer: 28.5% (57 offers from 200 candidates).\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"sourcing_quality\\\",\\\"category\\\":\\\"channel_optimization\\\"},\\\"id\\\":\\\"src-006\\\"}\"}]",
       "rag_used": true,
-      "latency_ms": 9108,
+      "latency_ms": 9121,
       "prompt_tokens": 0,
       "completion_tokens": 0,
       "total_tokens": 0,
@@ -284,238 +291,44 @@
         "Referral": 4,
         "LinkedIn": 1
       },
-      "run_timestamp": "2026-06-11T19:47:44.781Z",
-      "eval_scores": {
-        "actionability": 1,
-        "grounding": 1,
-        "confidence": 1,
-        "schema_valid": 1,
-        "rag_grounded": 1
-      },
-      "eval_overall": 1,
-      "rag_grounded": true
-    },
-    {
-      "agent": "rejection_pattern",
-      "recommendation": "Ensure salary bands are clearly communicated in job postings to reduce compensation mismatch rejections.",
-      "evidence": {
-        "total_rejections": 114,
-        "reasons_breakdown": {
-          "Role cancelled": 15,
-          "Compensation mismatch": 15,
-          "Underqualified": 13,
-          "Communication issues": 12,
-          "Technical skills": 11,
-          "Background check failed": 11,
-          "Culture fit": 10,
-          "Overqualified": 10,
-          "No show": 9,
-          "Better candidate selected": 8
+      "run_timestamp": "2026-06-11T20:06:33.686Z",
+      "evaluation": {
+        "rubric_scores": {
+          "actionability": 0.9,
+          "grounding": 0.8,
+          "reasoning_quality": 0.9,
+          "schema_validity": 1,
+          "business_relevance": 0.9
         },
-        "key_insight": "Controllable rejections account for 44.7% of all rejections, with compensation mismatch and role cancellations contributing significantly."
-      },
-      "confidence_score": 0.9,
-      "cost_of_insight": {
-        "model": "gpt-4o",
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_tokens": 0,
-        "estimated_usd": 0,
-        "llm_calls": 0,
-        "input_rate_per_1k": 0.0025,
-        "output_rate_per_1k": 0.01
-      },
-      "alternative": {
-        "model": "gpt-3.5",
-        "trade_off": "Lower cost but might offer less precise insights due to model limitations."
-      },
-      "rag_context": "[{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Industry benchmarks for rejection patterns in technical hiring. Typical rejection rates: Engineering roles 55-65%, Data Science 50-60%, Product 45-55%. Expected early-stage (R1) rejection rate: 35-45% — screens out unqualified applicants. Expected compensation mismatch rate: 5-10% — above 12% signals JD salary range not being shared. Background check failure rate benchmark: 2-4%; above 8% suggests insufficient pre-screening. Culture fit rejection rate: 5-10%; above 12% may signal inconsistent culture definition across panels. No-show benchmark: under 5%; above 7% suggests poor candidate engagement or scheduling friction.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"rejection_pattern\\\",\\\"category\\\":\\\"industry_rejection_benchmarks\\\"},\\\"id\\\":\\\"rej-004\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Rejection reason breakdown (114 rejections from 200 candidates, 57% rejection rate). Top reasons: Role cancelled (15, 13.2%), Compensation mismatch (15, 13.2%), Underqualified (13, 11.4%), Communication issues (12, 10.5%), Technical skills (11, 9.6%), Background check failed (11, 9.6%), Culture fit (10, 8.8%), Overqualified (10, 8.8%), No show (9, 7.9%), Better candidate selected (8, 7.0%). Role cancellations and compensation mismatches together account for 26.3% — these are process failures, not candidate failures.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"rejection_pattern\\\",\\\"category\\\":\\\"rejection_reasons_overall\\\"},\\\"id\\\":\\\"rej-001\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Rejection root cause categorisation. Controllable rejections (team can fix): Role cancelled (15) — headcount planning failure; Compensation mismatch (15) — salary band not communicated early; Communication issues (12) — interviewer training gap; No show (9) — scheduling/engagement failure. Total controllable: 51 rejections (44.7% of all rejections). Candidate-driven rejections: Underqualified (13), Technical skills (11), Overqualified (10), Culture fit (10), Better candidate selected (8). Total: 52 (45.6%). Recommendation: half of all rejections are internally fixable.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"rejection_pattern\\\",\\\"category\\\":\\\"controllable_vs_uncontrollable\\\"},\\\"id\\\":\\\"rej-003\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Rejection distribution by interview round (stage analysis). Round 1: 23 rejections (20.2%) — high early-stage dropout suggests JD-to-expectation mismatch. Round 2: 31 rejections (27.2%) — largest dropout stage, likely technical screen. Round 3: 21 rejections (18.4%). Round 4: 23 rejections (20.2%). Round 5: 9 rejections (7.9%). Round 6: 7 rejections (6.1%). Benchmark: healthy funnels drop 30-40% at Round 1, 20-25% at Round 2. High Round 4 rejections (20%) relative to Round 3 may indicate panel quality issues late in process.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"rejection_pattern\\\",\\\"category\\\":\\\"rejection_by_stage\\\"},\\\"id\\\":\\\"rej-002\\\"}\"}]",
-      "rag_used": true,
-      "latency_ms": 8027,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "estimated_usd": 0,
-      "llm_calls": 0,
-      "run_timestamp": "2026-06-11T19:47:52.836Z",
-      "eval_scores": {
-        "actionability": 1,
-        "grounding": 1,
-        "confidence": 1,
-        "schema_valid": 1,
-        "rag_grounded": 1
-      },
-      "eval_overall": 1,
-      "rag_grounded": true
-    },
-    {
-      "agent": "panel_load_balancer",
-      "recommendation": "Immediately redistribute 15 panels from Sam Rivera to Casey Kim and Morgan Chen to balance the load.",
-      "evidence": {
-        "overloaded": [
-          "Sam Rivera"
-        ],
-        "underloaded": [
-          "Casey Kim",
-          "Morgan Chen"
-        ],
-        "key_insight": "Sam Rivera is at a critical overload with 77 panels, significantly above the safe maximum threshold, risking burnout and inconsistent scoring."
-      },
-      "confidence_score": 0.9,
-      "cost_of_insight": {
-        "model": "gpt-4o-mini",
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_tokens": 0,
-        "estimated_usd": 0,
-        "llm_calls": 0,
-        "input_rate_per_1k": 0.00015,
-        "output_rate_per_1k": 0.0006
-      },
-      "alternative": {
-        "model": "gpt-3.5",
-        "trade_off": "Lower accuracy and insight granularity."
-      },
-      "rag_context": "[{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Interviewer panel load distribution (10 interviewers, 200 candidates). Sam Rivera: 77 panels (highest load, 38.5% of candidates). Jamie Osei: 64 panels. Riley Patel: 61. Alex Wang: 61. Drew Singh: 61. Taylor Brooks: 59. Quinn Diaz: 57. Jordan Lee: 56. Morgan Chen: 55. Casey Kim: 55. Average load: 60.6 panels per interviewer. Standard deviation: ~6.5. Sam Rivera is a significant outlier at 27% above average — risk of burnout and inconsistent scoring.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"panel_load_balancer\\\",\\\"category\\\":\\\"interviewer_load_summary\\\"},\\\"id\\\":\\\"panel-001\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Interviewer overload risk assessment. Industry benchmark: healthy interviewer load is 4-6 interviews per week, or 15-25 per month. Over a hiring cycle, 40-50 total panels is considered sustainable without calibration fatigue. Sam Rivera at 77 panels is 54-93% above safe maximum — high risk of scoring inconsistency. Jamie Osei at 64 is at the upper threshold. Casey Kim and Morgan Chen at 55 are within healthy range. Recommendation: cap any single interviewer at 65 panels per cycle; rebalance Sam Rivera immediately.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"panel_load_balancer\\\",\\\"category\\\":\\\"overload_risk\\\"},\\\"id\\\":\\\"panel-002\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Interview scoring consistency and panel quality benchmarks. Average cumulative round score across all 200 candidates: calculated from data. Score variance increases with interviewer fatigue — overloaded interviewers show wider score ranges. Industry standard: inter-rater reliability (IRR) should be above 0.7 (Cohen's kappa) for technical roles. Best practice: run calibration sessions every 30 panels per interviewer. Panels with 3+ interviewers have better IRR than 1-2 person panels. Recommendation: require minimum 2 interviewers per panel for all senior and above roles.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"panel_load_balancer\\\",\\\"category\\\":\\\"scoring_consistency\\\"},\\\"id\\\":\\\"panel-005\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Panel rebalancing strategy for overloaded interviewers. To rebalance: move 12-15 panels from Sam Rivera to Casey Kim and Morgan Chen (capacity available). Rotate Quinn Diaz (57) and Jordan Lee (56) into senior-level panels they haven't covered yet. Establish a panel rotation policy: no interviewer should be on more than 3 panels per week. Add a scheduling rule in ATS: flag any interviewer exceeding 70% of average panel load. Cross-train interviewers across role types to improve rebalancing flexibility.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"panel_load_balancer\\\",\\\"category\\\":\\\"rebalancing_strategy\\\"},\\\"id\\\":\\\"panel-003\\\"}\"}]",
-      "rag_used": true,
-      "latency_ms": 4359,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "estimated_usd": 0,
-      "llm_calls": 0,
-      "run_timestamp": "2026-06-11T19:47:57.232Z",
-      "eval_scores": {
-        "actionability": 1,
-        "grounding": 1,
-        "confidence": 1,
-        "schema_valid": 1,
-        "rag_grounded": 1
-      },
-      "eval_overall": 1,
-      "rag_grounded": true
-    },
-    {
-      "agent": "offer_insights",
-      "recommendation": "Implement offer enhancement strategies, including faster offer processes and improved candidate engagement, to aim for a 75% acceptance rate.",
-      "evidence": {
-        "total_offers": 58,
-        "declined": 23,
-        "decline_rate": 39.7,
-        "key_insight": "Current 59.6% acceptance rate is 10-20 points below the industry benchmark of 70-80% for senior engineering roles."
-      },
-      "confidence_score": 0.85,
-      "cost_of_insight": {
-        "model": "gpt-4o",
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_tokens": 0,
-        "estimated_usd": 0,
-        "llm_calls": 0,
-        "input_rate_per_1k": 0.0025,
-        "output_rate_per_1k": 0.01
-      },
-      "alternative": {
-        "model": "gpt-4",
-        "trade_off": "Potential higher cost with similar insights owing to larger token consumption."
-      },
-      "rag_context": "[{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Offer outcomes summary (57 offers made, 200 candidates total). Offers accepted: 34 (59.6% acceptance rate). Offers declined: 23 (40.4% decline rate). Overall pipeline conversion: 34 hires from 200 candidates = 17% end-to-end conversion. Industry benchmark for offer acceptance: 70-80% for senior engineering roles. Current 59.6% acceptance rate is 10-20 points below benchmark — significant gap requiring action. Each declined offer represents ~60 hours of interview time wasted across panels.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"offer_insights\\\",\\\"category\\\":\\\"offer_acceptance_summary\\\"},\\\"id\\\":\\\"offer-001\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Offer acceptance rates by sourcing channel. Company Website converts best once an offer is made: 85.7% acceptance rate (6 of 7 offers). Glassdoor is second at 77.8% (7 of 9). AngelList and LinkedIn both sit at 50.0%. Hackathon is the weakest closer at 40.0% — candidates from events may be passively exploring. Benchmark: industry average offer acceptance is 70-75%; channels below 55% warrant re-evaluation.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"sourcing_quality\\\",\\\"category\\\":\\\"channel_acceptance\\\"},\\\"id\\\":\\\"src-002\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Actions to improve offer acceptance rate from 59.6% to benchmark 75%+. (1) Address culture concerns: add team lunch/coffee with potential teammates before offer stage. (2) Reduce time-to-offer: 13% declined due to long timeline — target under 5 days from final interview to offer. (3) Competing offers: implement exploding offer policy with 72-hour decision window for senior roles. (4) Counter-offers: brief candidates on counter-offer likelihood during offer call. (5) Role scope: align JD with actual role scope — 3 declines suggest role was mis-scoped. (6) Compensation: ensure offer is within 5% of candidate's stated expectation gathered at screening.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"offer_insights\\\",\\\"category\\\":\\\"offer_improvement_actions\\\"},\\\"id\\\":\\\"offer-003\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Industry benchmarks for rejection patterns in technical hiring. Typical rejection rates: Engineering roles 55-65%, Data Science 50-60%, Product 45-55%. Expected early-stage (R1) rejection rate: 35-45% — screens out unqualified applicants. Expected compensation mismatch rate: 5-10% — above 12% signals JD salary range not being shared. Background check failure rate benchmark: 2-4%; above 8% suggests insufficient pre-screening. Culture fit rejection rate: 5-10%; above 12% may signal inconsistent culture definition across panels. No-show benchmark: under 5%; above 7% suggests poor candidate engagement or scheduling friction.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"rejection_pattern\\\",\\\"category\\\":\\\"industry_rejection_benchmarks\\\"},\\\"id\\\":\\\"rej-004\\\"}\"}]",
-      "rag_used": true,
-      "latency_ms": 2590,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "estimated_usd": 0,
-      "llm_calls": 0,
-      "run_timestamp": "2026-06-11T19:47:59.852Z",
-      "eval_scores": {
-        "actionability": 1,
-        "grounding": 1,
-        "confidence": 1,
-        "schema_valid": 1,
-        "rag_grounded": 1
-      },
-      "eval_overall": 1,
-      "rag_grounded": true
-    },
-    {
-      "agent": "pipeline_health",
-      "recommendation": "Implement stricter candidate screening to reduce time in pipeline and manage SLA compliance.",
-      "evidence": {
-        "avg_days_in_pipeline": 19.7,
-        "sla_breaches": [
-          {
-            "role": "Senior Data Science",
-            "days_open": 35,
-            "sla_days": 30
-          },
-          {
-            "role": "Senior Design",
-            "days_open": 35,
-            "sla_days": 30
-          },
-          {
-            "role": "Lead Engineering",
-            "days_open": 42,
-            "sla_days": 30
-          },
-          {
-            "role": "Mid Engineering",
-            "days_open": 42,
-            "sla_days": 30
-          },
-          {
-            "role": "Senior Product",
-            "days_open": 42,
-            "sla_days": 30
-          }
-        ],
-        "key_insight": "Current average days in pipeline exceeds benchmarks for many roles, indicating a need for improved pipeline efficiency."
-      },
-      "confidence_score": 0.85,
-      "cost_of_insight": {
-        "model": "gpt-4o-mini",
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_tokens": 0,
-        "estimated_usd": 0,
-        "llm_calls": 0,
-        "input_rate_per_1k": 0.00015,
-        "output_rate_per_1k": 0.0006
-      },
-      "alternative": {
-        "model": "gpt-3.5-turbo",
-        "trade_off": "Lower confidence in analysis but potentially reduced cost."
-      },
-      "rag_context": "[{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Industry benchmarks for rejection patterns in technical hiring. Typical rejection rates: Engineering roles 55-65%, Data Science 50-60%, Product 45-55%. Expected early-stage (R1) rejection rate: 35-45% — screens out unqualified applicants. Expected compensation mismatch rate: 5-10% — above 12% signals JD salary range not being shared. Background check failure rate benchmark: 2-4%; above 8% suggests insufficient pre-screening. Culture fit rejection rate: 5-10%; above 12% may signal inconsistent culture definition across panels. No-show benchmark: under 5%; above 7% suggests poor candidate engagement or scheduling friction.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"rejection_pattern\\\",\\\"category\\\":\\\"industry_rejection_benchmarks\\\"},\\\"id\\\":\\\"rej-004\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Industry sourcing benchmarks for engineering and technical roles. Best-in-class offer rates by channel: Referral 40-55%, Recruiter Outreach 30-45%, Job Boards (Indeed/Glassdoor) 20-35%, LinkedIn 15-25%, Hackathons 25-35%. Typical offer acceptance rate benchmark: 72-78% for senior roles, 65-70% for mid-level. Time-to-source benchmark: Referral 8-12 days, LinkedIn 18-25 days, Job Boards 14-20 days. Cost-per-hire benchmark: Referral lowest ($1,500-3,000), Agency/Recruiter highest ($15,000-25,000).\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"sourcing_quality\\\",\\\"category\\\":\\\"industry_benchmark\\\"},\\\"id\\\":\\\"src-004\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Pipeline velocity benchmarks for technical hiring. Industry average time-to-hire by role: Software Engineer 35-45 days, Senior Engineer 42-52 days, Staff/Principal 55-70 days, Data Scientist 40-55 days. Interview-to-offer conversion benchmark: 35-45% (current dataset: 28.5% — below benchmark). Offer-to-acceptance conversion benchmark: 72-78% (current: 59.6% — below benchmark). Sourcing-to-screen conversion: typically 20-30% of applicants reach phone screen. Pipeline health score formula: (Offer rate × Acceptance rate) / SLA compliance × 100.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"pipeline_health\\\",\\\"category\\\":\\\"velocity_metrics\\\"},\\\"id\\\":\\\"pipe-004\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Time-to-hire SLA benchmarks by position level. Mid-level roles: SLA target 21-28 days from application to offer. Senior roles: SLA target 28-35 days. Lead roles: SLA target 35-42 days. Staff roles: SLA target 35-45 days. Principal roles: SLA target 42-55 days. Average rounds by level in this dataset: Lead 3.32, Senior 3.01, Mid 2.84, Principal 2.54, Staff 2.39. Staff has fewer rounds but longer calendar time due to scheduling complexity. Every reschedule adds 3-5 days; 50% of candidates had 2+ reschedules — expect pipeline to run long.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"pipeline_health\\\",\\\"category\\\":\\\"sla_benchmarks_by_level\\\"},\\\"id\\\":\\\"pipe-002\\\"}\"}]",
-      "rag_used": true,
-      "latency_ms": 4936,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "estimated_usd": 0,
-      "llm_calls": 0,
-      "run_timestamp": "2026-06-11T19:48:04.826Z",
-      "eval_scores": {
-        "actionability": 1,
-        "grounding": 1,
-        "confidence": 1,
-        "schema_valid": 1,
-        "rag_grounded": 1
-      },
-      "eval_overall": 1,
-      "rag_grounded": true
+        "golden_alignment": {
+          "theme_match": 1,
+          "entity_match": 1,
+          "anti_theme_avoidance": 1,
+          "confidence_calibration": 1
+        },
+        "rubric_overall": 0.92,
+        "golden_overall": 1,
+        "combined_score": 0.96,
+        "verdict": "pass",
+        "reasoning": "The recommendation is actionable and well-grounded in the RAG context. It aligns perfectly with the golden scenario for LinkedIn's poor performance, mentioning required themes and entities.",
+        "matched_scenario_id": "gold-src-02"
+      }
     }
   ],
-  "optimization_report": {
-    "total_usd": 0,
-    "total_tokens": 0,
+  "cost_aggregate": {
     "total_prompt_tokens": 0,
     "total_completion_tokens": 0,
-    "avg_latency_ms": 5804,
-    "max_latency_ms": 9108,
+    "total_tokens": 0,
+    "total_estimated_usd": 0,
+    "total_llm_calls": 0,
+    "rag_used_count": 1,
+    "rag_usage_rate": 1,
+    "avg_latency_ms": 9121,
+    "max_latency_ms": 9121,
+    "min_latency_ms": 9121,
+    "p95_latency_ms": 9121,
     "slowest_agent": "sourcing_quality",
-    "rag_grounding_rate": "5/5",
+    "most_expensive_agent": "sourcing_quality",
     "cost_by_agent": [
       {
         "agent": "sourcing_quality",
@@ -524,49 +337,43 @@
         "completion_tokens": 0,
         "total_tokens": 0,
         "estimated_usd": 0,
-        "latency_ms": 9108
-      },
-      {
-        "agent": "rejection_pattern",
-        "model": "gpt-4o",
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_tokens": 0,
-        "estimated_usd": 0,
-        "latency_ms": 8027
-      },
-      {
-        "agent": "panel_load_balancer",
-        "model": "gpt-4o-mini",
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_tokens": 0,
-        "estimated_usd": 0,
-        "latency_ms": 4359
-      },
-      {
-        "agent": "offer_insights",
-        "model": "gpt-4o",
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_tokens": 0,
-        "estimated_usd": 0,
-        "latency_ms": 2590
-      },
-      {
-        "agent": "pipeline_health",
-        "model": "gpt-4o-mini",
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_tokens": 0,
-        "estimated_usd": 0,
-        "latency_ms": 4936
+        "latency_ms": 9121,
+        "llm_calls": 0,
+        "rag_used": true
       }
-    ],
+    ]
+  },
+  "evaluation_summary": {
+    "method": "llm_as_judge_with_golden_dataset",
+    "judge_model": "gpt-4o",
+    "golden_scenarios_count": 18,
+    "pass_count": 1,
+    "review_count": 0,
+    "fail_count": 0,
+    "pass_rate": 1,
+    "avg_combined_score": 0.96,
+    "eval_cost": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0,
+      "estimated_usd": 0,
+      "latency_ms": 3241
+    }
+  },
+  "cost_optimization": {
+    "grand_total_usd": 0,
+    "grand_total_tokens": 0,
+    "insights_usd": 0,
+    "eval_usd": 0,
+    "insights_tokens": 0,
+    "eval_tokens": 0,
     "potential_saving_usd": 0,
     "suggestions": [
-      "sourcing_quality latency is 9108ms — consider prompt compression to reduce tokens.",
-      "rejection_pattern latency is 8027ms — consider prompt compression to reduce tokens."
+      {
+        "type": "latency",
+        "agent": "sourcing_quality",
+        "rationale": "Latency 9121ms exceeds 8s threshold. Consider prompt compression or lighter model."
+      }
     ]
   }
 }
