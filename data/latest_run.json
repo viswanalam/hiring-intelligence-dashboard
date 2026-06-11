@@ -1,24 +1,24 @@
 {
   "status": "complete",
-  "generated_at": "2026-06-11T21:42:50.386Z",
+  "generated_at": "2026-06-11T22:59:08.394Z",
   "run_summary": {
     "agents_run": 1,
-    "total_cost_usd": 0,
-    "insights_cost_usd": 0,
-    "eval_cost_usd": 0,
-    "total_tokens": 0,
-    "prompt_tokens": 0,
-    "completion_tokens": 0,
-    "avg_latency_ms": 6981,
-    "max_latency_ms": 6981,
-    "p95_latency_ms": 6981,
+    "total_cost_usd": 0.021523,
+    "insights_cost_usd": 0.007198,
+    "eval_cost_usd": 0.014325,
+    "total_tokens": 6941,
+    "prompt_tokens": 1591,
+    "completion_tokens": 322,
+    "avg_latency_ms": 4452,
+    "max_latency_ms": 4452,
+    "p95_latency_ms": 4452,
     "slowest_agent": "rejection_pattern",
     "most_expensive_agent": "rejection_pattern",
     "rag_usage_rate": 1,
     "eval_method": "llm_as_judge_with_golden_dataset",
     "eval_pass_rate": 1,
-    "eval_avg_score": 0.96,
-    "potential_saving_usd": 0
+    "eval_avg_score": 0.97,
+    "potential_saving_usd": 0.005039
   },
   "pipeline_stats": {
     "total": 201,
@@ -224,7 +224,7 @@
   "insights": [
     {
       "agent": "rejection_pattern",
-      "recommendation": "Focus on addressing the role cancellations and compensation mismatches to improve hiring efficiency.",
+      "recommendation": "Improve headcount planning and communicate salary bands early to reduce role cancellations and compensation mismatches.",
       "evidence": {
         "source_counts": {
           "AngelList": 27,
@@ -246,68 +246,49 @@
           "Referral": 4,
           "LinkedIn": 1
         },
-        "key_insight": "Role cancellations and compensation mismatches are significant process issues, making up 26.3% of rejections, warranting targeted process improvements.",
+        "key_insight": "Role cancellations and compensation mismatches account for 26.3% of rejections, which are deemed process failures, significantly above industry benchmarks.",
         "total_rejections": 114,
         "reasons_breakdown": {
-          "Role cancelled": 15,
-          "Compensation mismatch": 15,
-          "Underqualified": 13,
-          "Communication": 12,
-          "Technical skills": 11,
-          "Background check failed": 11,
           "Culture fit": 10,
           "Overqualified": 10,
+          "Technical skills": 11,
           "No show": 9,
-          "Better candidate selected": 8
+          "Communication": 12,
+          "Better candidate selected": 8,
+          "Underqualified": 13,
+          "Role cancelled": 15,
+          "Background check failed": 11,
+          "Compensation mismatch": 15
         }
       },
-      "confidence_score": 0.85,
+      "confidence_score": 0.9,
       "cost_of_insight": {
         "model": "gpt-4o",
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_tokens": 0,
-        "estimated_usd": 0,
-        "llm_calls": 0,
+        "prompt_tokens": 1591,
+        "completion_tokens": 322,
+        "total_tokens": 1913,
+        "estimated_usd": 0.007198,
+        "llm_calls": 2,
+        "estimation_method": "deterministic_char_count",
         "input_rate_per_1k": 0.0025,
         "output_rate_per_1k": 0.01
       },
       "alternative": {
-        "model": "other",
-        "trade_off": "Potential for improved depth analysis but with higher computational cost."
+        "model": "gpt-3.5",
+        "trade_off": "Lower accuracy in identifying complex process failures leading to potential less actionable recommendations."
       },
-      "rag_context": "[{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Rejection reason breakdown (114 rejections from 200 candidates, 57% rejection rate). Top reasons: Role cancelled (15, 13.2%), Compensation mismatch (15, 13.2%), Underqualified (13, 11.4%), Communication issues (12, 10.5%), Technical skills (11, 9.6%), Background check failed (11, 9.6%), Culture fit (10, 8.8%), Overqualified (10, 8.8%), No show (9, 7.9%), Better candidate selected (8, 7.0%). Role cancellations and compensation mismatches together account for 26.3% — these are process failures, not candidate failures.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"rejection_pattern\\\",\\\"category\\\":\\\"rejection_reasons_overall\\\"},\\\"id\\\":\\\"rej-001\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Rejection distribution by interview round (stage analysis). Round 1: 23 rejections (20.2%) — high early-stage dropout suggests JD-to-expectation mismatch. Round 2: 31 rejections (27.2%) — largest dropout stage, likely technical screen. Round 3: 21 rejections (18.4%). Round 4: 23 rejections (20.2%). Round 5: 9 rejections (7.9%). Round 6: 7 rejections (6.1%). Benchmark: healthy funnels drop 30-40% at Round 1, 20-25% at Round 2. High Round 4 rejections (20%) relative to Round 3 may indicate panel quality issues late in process.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"rejection_pattern\\\",\\\"category\\\":\\\"rejection_by_stage\\\"},\\\"id\\\":\\\"rej-002\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Industry benchmarks for rejection patterns in technical hiring. Typical rejection rates: Engineering roles 55-65%, Data Science 50-60%, Product 45-55%. Expected early-stage (R1) rejection rate: 35-45% — screens out unqualified applicants. Expected compensation mismatch rate: 5-10% — above 12% signals JD salary range not being shared. Background check failure rate benchmark: 2-4%; above 8% suggests insufficient pre-screening. Culture fit rejection rate: 5-10%; above 12% may signal inconsistent culture definition across panels. No-show benchmark: under 5%; above 7% suggests poor candidate engagement or scheduling friction.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"rejection_pattern\\\",\\\"category\\\":\\\"industry_rejection_benchmarks\\\"},\\\"id\\\":\\\"rej-004\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Rejection root cause categorisation. Controllable rejections (team can fix): Role cancelled (15) — headcount planning failure; Compensation mismatch (15) — salary band not communicated early; Communication issues (12) — interviewer training gap; No show (9) — scheduling/engagement failure. Total controllable: 51 rejections (44.7% of all rejections). Candidate-driven rejections: Underqualified (13), Technical skills (11), Overqualified (10), Culture fit (10), Better candidate selected (8). Total: 52 (45.6%). Recommendation: half of all rejections are internally fixable.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"rejection_pattern\\\",\\\"category\\\":\\\"controllable_vs_uncontrollable\\\"},\\\"id\\\":\\\"rej-003\\\"}\"}]",
+      "rag_context": "[{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Rejection root cause categorisation. Controllable rejections (team can fix): Role cancelled (15) — headcount planning failure; Compensation mismatch (15) — salary band not communicated early; Communication issues (12) — interviewer training gap; No show (9) — scheduling/engagement failure. Total controllable: 51 rejections (44.7% of all rejections). Candidate-driven rejections: Underqualified (13), Technical skills (11), Overqualified (10), Culture fit (10), Better candidate selected (8). Total: 52 (45.6%). Recommendation: half of all rejections are internally fixable.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"rejection_pattern\\\",\\\"category\\\":\\\"controllable_vs_uncontrollable\\\"},\\\"id\\\":\\\"rej-003\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Rejection distribution by interview round (stage analysis). Round 1: 23 rejections (20.2%) — high early-stage dropout suggests JD-to-expectation mismatch. Round 2: 31 rejections (27.2%) — largest dropout stage, likely technical screen. Round 3: 21 rejections (18.4%). Round 4: 23 rejections (20.2%). Round 5: 9 rejections (7.9%). Round 6: 7 rejections (6.1%). Benchmark: healthy funnels drop 30-40% at Round 1, 20-25% at Round 2. High Round 4 rejections (20%) relative to Round 3 may indicate panel quality issues late in process.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"rejection_pattern\\\",\\\"category\\\":\\\"rejection_by_stage\\\"},\\\"id\\\":\\\"rej-002\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Rejection reason breakdown (114 rejections from 200 candidates, 57% rejection rate). Top reasons: Role cancelled (15, 13.2%), Compensation mismatch (15, 13.2%), Underqualified (13, 11.4%), Communication issues (12, 10.5%), Technical skills (11, 9.6%), Background check failed (11, 9.6%), Culture fit (10, 8.8%), Overqualified (10, 8.8%), No show (9, 7.9%), Better candidate selected (8, 7.0%). Role cancellations and compensation mismatches together account for 26.3% — these are process failures, not candidate failures.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"rejection_pattern\\\",\\\"category\\\":\\\"rejection_reasons_overall\\\"},\\\"id\\\":\\\"rej-001\\\"}\"},{\"type\":\"text\",\"text\":\"{\\\"pageContent\\\":\\\"Industry benchmarks for rejection patterns in technical hiring. Typical rejection rates: Engineering roles 55-65%, Data Science 50-60%, Product 45-55%. Expected early-stage (R1) rejection rate: 35-45% — screens out unqualified applicants. Expected compensation mismatch rate: 5-10% — above 12% signals JD salary range not being shared. Background check failure rate benchmark: 2-4%; above 8% suggests insufficient pre-screening. Culture fit rejection rate: 5-10%; above 12% may signal inconsistent culture definition across panels. No-show benchmark: under 5%; above 7% suggests poor candidate engagement or scheduling friction.\\\",\\\"metadata\\\":{\\\"agent\\\":\\\"rejection_pattern\\\",\\\"category\\\":\\\"industry_rejection_benchmarks\\\"},\\\"id\\\":\\\"rej-004\\\"}\"}]",
       "rag_used": true,
-      "latency_ms": 6981,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "estimated_usd": 0,
-      "llm_calls": 0,
-      "source_counts": {
-        "AngelList": 27,
-        "Company Website": 31,
-        "Referral": 17,
-        "Indeed": 23,
-        "Recruiter Outreach": 25,
-        "LinkedIn": 16,
-        "Glassdoor": 31,
-        "Hackathon": 31
-      },
-      "source_accepted": {
-        "AngelList": 3,
-        "Recruiter Outreach": 6,
-        "Hackathon": 4,
-        "Indeed": 4,
-        "Glassdoor": 7,
-        "Company Website": 6,
-        "Referral": 4,
-        "LinkedIn": 1
-      },
-      "run_timestamp": "2026-06-11T21:42:47.040Z",
+      "latency_ms": 4452,
+      "prompt_tokens": 1591,
+      "completion_tokens": 322,
+      "total_tokens": 1913,
+      "estimated_usd": 0.007198,
+      "llm_calls": 2,
+      "run_timestamp": "2026-06-11T22:59:05.358Z",
       "evaluation": {
         "rubric_scores": {
-          "actionability": 0.8,
+          "actionability": 0.9,
           "grounding": 0.9,
           "reasoning_quality": 0.9,
           "schema_validity": 1,
@@ -319,39 +300,39 @@
           "anti_theme_avoidance": 1,
           "confidence_calibration": 1
         },
-        "rubric_overall": 0.92,
+        "rubric_overall": 0.94,
         "golden_overall": 1,
-        "combined_score": 0.96,
+        "combined_score": 0.97,
         "verdict": "pass",
-        "reasoning": "The insight is well-grounded and actionable, addressing key process issues. It aligns perfectly with the expected themes and entities from the golden dataset.",
+        "reasoning": "The insight is well-grounded, actionable, and aligns perfectly with the expected themes and entities from the golden dataset. It avoids anti-themes and the confidence score is well-calibrated.",
         "matched_scenario_id": "gold-rej-01"
       }
     }
   ],
   "cost_aggregate": {
-    "total_prompt_tokens": 0,
-    "total_completion_tokens": 0,
-    "total_tokens": 0,
-    "total_estimated_usd": 0,
-    "total_llm_calls": 0,
+    "total_prompt_tokens": 1591,
+    "total_completion_tokens": 322,
+    "total_tokens": 1913,
+    "total_estimated_usd": 0.007198,
+    "total_llm_calls": 2,
     "rag_used_count": 1,
     "rag_usage_rate": 1,
-    "avg_latency_ms": 6981,
-    "max_latency_ms": 6981,
-    "min_latency_ms": 6981,
-    "p95_latency_ms": 6981,
+    "avg_latency_ms": 4452,
+    "max_latency_ms": 4452,
+    "min_latency_ms": 4452,
+    "p95_latency_ms": 4452,
     "slowest_agent": "rejection_pattern",
     "most_expensive_agent": "rejection_pattern",
     "cost_by_agent": [
       {
         "agent": "rejection_pattern",
         "model": "gpt-4o",
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_tokens": 0,
-        "estimated_usd": 0,
-        "latency_ms": 6981,
-        "llm_calls": 0,
+        "prompt_tokens": 1591,
+        "completion_tokens": 322,
+        "total_tokens": 1913,
+        "estimated_usd": 0.007198,
+        "latency_ms": 4452,
+        "llm_calls": 2,
         "rag_used": true
       }
     ]
@@ -364,27 +345,35 @@
     "review_count": 0,
     "fail_count": 0,
     "pass_rate": 1,
-    "avg_combined_score": 0.96,
+    "avg_combined_score": 0.97,
     "eval_cost": {
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "estimated_usd": 0,
-      "latency_ms": 3273
+      "prompt_tokens": 4794,
+      "completion_tokens": 234,
+      "total_tokens": 5028,
+      "estimated_usd": 0.014325,
+      "latency_ms": 2970,
+      "estimation_method": "deterministic_char_count"
     }
   },
   "cost_optimization": {
-    "grand_total_usd": 0,
-    "grand_total_tokens": 0,
-    "insights_usd": 0,
-    "eval_usd": 0,
-    "insights_tokens": 0,
-    "eval_tokens": 0,
-    "potential_saving_usd": 0,
+    "grand_total_usd": 0.021523,
+    "grand_total_tokens": 6941,
+    "insights_usd": 0.007198,
+    "eval_usd": 0.014325,
+    "insights_tokens": 1913,
+    "eval_tokens": 5028,
+    "potential_saving_usd": 0.005039,
     "suggestions": [
       {
-        "type": "all_optimal",
-        "rationale": "All agents within cost, latency, and quality targets."
+        "type": "downgrade",
+        "agent": "rejection_pattern",
+        "current_model": "gpt-4o",
+        "recommended": "gpt-4o-mini",
+        "eval_score": 0.97,
+        "current_cost": 0.007198,
+        "expected_cost": 0.002159,
+        "estimated_saving_usd": 0.005039,
+        "rationale": "High eval score (0.97) suggests structured task — mini may suffice."
       }
     ]
   }
