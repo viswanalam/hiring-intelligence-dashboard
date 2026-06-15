@@ -1,0 +1,1438 @@
+{
+  "name": "AI Hiring Intelligence System",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "7e60d42c-9450-42d6-a9ce-d20d688a2af4",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_DOCUMENT_ID",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_TAB_GID",
+          "mode": "url"
+        },
+        "options": {}
+      },
+      "id": "e4f9f191-df4c-4418-9698-af4e639794de",
+      "name": "Get row(s) in sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -672,
+        384
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst candidates = rows.map(r => ({\n  id:               r['Auto-ID'],\n  name:             r['Applicant Name'],\n  role:             ((r['Position Level'] || '') + ' ' + (r['Position Type'] || '')).trim(),\n  source:           r['Channel'],\n  stage:            r['Offered'] === 'Yes' ? 'Offer' : (r['Rejected'] === 'Yes' ? 'Rejected' : 'Interview'),\n  days_in_pipeline: parseInt(r['Rounds Completed'] || 0) * 7,\n  rejection_reason: r['Rejected Reason'] || null,\n  offer_declined:   r['Offer Acceptance'] === 'No',\n  reschedules:      parseInt(r['Re-Schedules'] || 0),\n  round_score:      parseFloat(r['Cumulative Round Score'] || 0),\n  position_id:      r['Position-ID'],\n  interviewers:     (r['Interviewers'] || '').split(';').map(s => s.trim()).filter(Boolean)\n}));\nconst interviewerMap = {};\nfor (const c of candidates) {\n  for (const iv of c.interviewers) {\n    if (!iv) continue;\n    interviewerMap[iv] = (interviewerMap[iv] || 0) + 1;\n  }\n}\nconst interviewers = Object.entries(interviewerMap).map(([name, panels_this_month]) => ({ name, panels_this_month, capacity: 10 }));\nconst roleMap = {};\nfor (const c of candidates) {\n  if (!roleMap[c.role]) roleMap[c.role] = { role: c.role, days_open: 0 };\n  roleMap[c.role].days_open = Math.max(roleMap[c.role].days_open, c.days_in_pipeline);\n}\nconst open_roles = Object.values(roleMap).map(r => ({\n  role: r.role,\n  days_open: r.days_open,\n  sla_days: (r.role.toLowerCase().includes('staff') || r.role.toLowerCase().includes('principal')) ? 45 : 30\n}));\nreturn [{ json: { run_id: 'run_' + Date.now(), timestamp: new Date().toISOString(), candidates, interviewers, open_roles } }];"
+      },
+      "id": "54e87472-ade0-418b-acf8-8ac42b21c4db",
+      "name": "Ingest & Normalise Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst routing = {\n  sourcing_quality:    { model: 'gpt-4o-mini', reason: 'Pattern matching over sources' },\n  rejection_pattern:   { model: 'gpt-4o',      reason: 'Nuanced root-cause analysis' },\n  panel_load_balancer: { model: 'gpt-4o-mini', reason: 'Simple numeric comparison' },\n  offer_insights:      { model: 'gpt-4o',      reason: 'Multi-factor decline reasoning' },\n  pipeline_health:     { model: 'gpt-4o-mini', reason: 'SLA and funnel math' }\n};\nreturn [{ json: { ...data, routing } }];"
+      },
+      "id": "8378d9ca-1a55-4084-abcf-1c2b8263cfd1",
+      "name": "Routing Agent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate all 5 agent outputs into one structured result\n// Inputs: 5 items from Output Capture nodes (Sourcing, Rejection,\n// Panel, Offer, Pipeline)\n\nconst insights = $input.all().map(i => i.json);\n\nif (insights.length === 0) {\n  throw new Error('No agent outputs received \u2014 check connections');\n}\n\n// \u2500\u2500 Cost aggregation \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nlet total_prompt_tokens     = 0;\nlet total_completion_tokens = 0;\nlet total_tokens            = 0;\nlet total_estimated_usd     = 0;\nlet total_llm_calls         = 0;\nlet rag_used_count          = 0;\n\nfor (const ins of insights) {\n  total_prompt_tokens     += (ins.prompt_tokens     || 0);\n  total_completion_tokens += (ins.completion_tokens || 0);\n  total_tokens            += (ins.total_tokens      || 0);\n  total_estimated_usd     += (ins.estimated_usd     || 0);\n  total_llm_calls         += (ins.llm_calls         || 0);\n  if (ins.rag_used) rag_used_count++;\n}\ntotal_estimated_usd = parseFloat(total_estimated_usd.toFixed(6));\n\n// \u2500\u2500 Latency stats \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst latencies = insights\n  .map(i => i.latency_ms)\n  .filter(l => typeof l === 'number');\n\nconst avg_latency_ms = latencies.length\n  ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)\n  : null;\nconst max_latency_ms = latencies.length ? Math.max(...latencies) : null;\nconst min_latency_ms = latencies.length ? Math.min(...latencies) : null;\n\n// p95 latency\nconst sortedLat = [...latencies].sort((a, b) => a - b);\nconst p95_idx = Math.ceil(0.95 * sortedLat.length) - 1;\nconst p95_latency_ms = sortedLat.length ? sortedLat[Math.max(0, p95_idx)] : null;\n\n// Slowest / most expensive\nconst slowest = insights.reduce((s, i) =>\n  (i.latency_ms || 0) > (s.latency_ms || 0) ? i : s, insights[0]);\nconst most_expensive = insights.reduce((m, i) =>\n  (i.estimated_usd || 0) > (m.estimated_usd || 0) ? i : m, insights[0]);\n\n// Per-agent cost summary (for the dashboard)\nconst cost_by_agent = insights.map(i => ({\n  agent:              i.agent,\n  model:              i.cost_of_insight?.model,\n  prompt_tokens:      i.prompt_tokens     || 0,\n  completion_tokens:  i.completion_tokens || 0,\n  total_tokens:       i.total_tokens      || 0,\n  estimated_usd:      i.estimated_usd     || 0,\n  latency_ms:         i.latency_ms        || null,\n  llm_calls:          i.llm_calls         || 0,\n  rag_used:           !!i.rag_used,\n}));\n\nreturn [{ json: {\n  insights,\n  cost_aggregate: {\n    total_prompt_tokens,\n    total_completion_tokens,\n    total_tokens,\n    total_estimated_usd,\n    total_llm_calls,\n    rag_used_count,\n    rag_usage_rate: parseFloat((rag_used_count / insights.length).toFixed(2)),\n    avg_latency_ms,\n    max_latency_ms,\n    min_latency_ms,\n    p95_latency_ms,\n    slowest_agent:        slowest.agent,\n    most_expensive_agent: most_expensive.agent,\n    cost_by_agent,\n  }\n} }];"
+      },
+      "id": "aggregate-outputs",
+      "name": "Aggregate Agent Outputs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        340,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Cost & Optimization Agent \u2014 uses real aggregated totals\nconst { insights, cost_aggregate, evaluation_summary } = $input.first().json;\n\n// \u2500\u2500 Total cost (insights + evaluation) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst insights_usd    = cost_aggregate.total_estimated_usd;\nconst insights_tokens = cost_aggregate.total_tokens;\nconst eval_usd        = evaluation_summary.eval_cost?.estimated_usd     || 0;\nconst eval_tokens     = evaluation_summary.eval_cost?.total_tokens      || 0;\n\nconst grand_total_usd    = parseFloat((insights_usd    + eval_usd).toFixed(6));\nconst grand_total_tokens = insights_tokens + eval_tokens;\n\n// \u2500\u2500 Optimization recommendations \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst suggestions = [];\n\n// (1) Find gpt-4o agents that scored well on eval \u2014 candidates for downgrade\nfor (const ins of insights) {\n  const model = ins.cost_of_insight?.model;\n  const evalScore = ins.evaluation?.combined_score || 0;\n  const cost = ins.estimated_usd || 0;\n  \n  if (model === 'gpt-4o' && evalScore >= 0.85 && cost > 0.001) {\n    const expected_after = parseFloat((cost * 0.3).toFixed(6));\n    suggestions.push({\n      type:           'downgrade',\n      agent:          ins.agent,\n      current_model:  model,\n      recommended:    'gpt-4o-mini',\n      eval_score:     evalScore,\n      current_cost:   cost,\n      expected_cost:  expected_after,\n      estimated_saving_usd: parseFloat((cost - expected_after).toFixed(6)),\n      rationale:      'High eval score (' + evalScore + ') suggests structured task \u2014 mini may suffice.',\n    });\n  }\n  \n  // (2) Flag gpt-4o-mini agents with low eval scores \u2014 candidates for upgrade\n  if (model === 'gpt-4o-mini' && evalScore < 0.6) {\n    suggestions.push({\n      type:           'upgrade',\n      agent:          ins.agent,\n      current_model:  model,\n      recommended:    'gpt-4o',\n      eval_score:     evalScore,\n      current_cost:   cost,\n      expected_cost:  parseFloat((cost * 16).toFixed(6)),\n      estimated_extra_usd: parseFloat((cost * 15).toFixed(6)),\n      rationale:      'Low eval score (' + evalScore + ') \u2014 gpt-4o may produce better insight.',\n    });\n  }\n  \n  // (3) Flag missing RAG usage\n  if (!ins.rag_used) {\n    suggestions.push({\n      type:           'rag_grounding',\n      agent:          ins.agent,\n      rationale:      'Agent did not call its RAG tool. Tighten tool description or system message to force grounding.',\n    });\n  }\n}\n\n// (4) Flag high latency\nif (cost_aggregate.max_latency_ms > 8000) {\n  suggestions.push({\n    type:        'latency',\n    agent:       cost_aggregate.slowest_agent,\n    rationale:   'Latency ' + cost_aggregate.max_latency_ms + 'ms exceeds 8s threshold. Consider prompt compression or lighter model.',\n  });\n}\n\nif (!suggestions.length) {\n  suggestions.push({\n    type: 'all_optimal',\n    rationale: 'All agents within cost, latency, and quality targets.',\n  });\n}\n\n// Total potential saving from all downgrade suggestions\nconst potential_saving_usd = suggestions\n  .filter(s => s.type === 'downgrade')\n  .reduce((s, x) => s + (x.estimated_saving_usd || 0), 0);\n\nreturn [{ json: {\n  insights,\n  cost_aggregate,\n  evaluation_summary,\n  cost_optimization: {\n    grand_total_usd,\n    grand_total_tokens,\n    insights_usd,\n    eval_usd,\n    insights_tokens,\n    eval_tokens,\n    potential_saving_usd: parseFloat(potential_saving_usd.toFixed(6)),\n    suggestions,\n  }\n} }];"
+      },
+      "id": "cost-optimization",
+      "name": "Cost & Optimization Agent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { insights, cost_aggregate, evaluation_summary, cost_optimization } = $input.first().json;\nconst { candidates, interviewers } = $node['Routing Agent'].json;\n\n// Pipeline stats from candidate data\nconst total       = candidates.length;\nconst offered     = candidates.filter(c => c.stage === 'Offer').length;\nconst accepted    = candidates.filter(c => c.stage === 'Offer' && !c.offer_declined).length;\nconst rejected    = candidates.filter(c => c.stage === 'Rejected').length;\nconst active      = total - offered - rejected;\nconst completed   = candidates.filter(c => c.stage !== 'Interview').length;\n\nconst pct = (n, d) => d ? parseFloat((n / d * 100).toFixed(1)) : 0;\n\nconst channelMap = {};\nfor (const c of candidates) {\n  const ch = c.source || 'Unknown';\n  if (!channelMap[ch]) channelMap[ch] = { total:0, offers:0, accepted:0 };\n  channelMap[ch].total++;\n  if (c.stage === 'Offer') channelMap[ch].offers++;\n  if (c.stage === 'Offer' && !c.offer_declined) channelMap[ch].accepted++;\n}\nconst channel_stats = Object.entries(channelMap).map(([channel, s]) => ({\n  channel, total: s.total, offers: s.offers, accepted: s.accepted,\n  offer_rate:  pct(s.offers,   s.total),\n  accept_rate: pct(s.accepted, s.offers),\n}));\n\nconst rejReasonMap = {};\nfor (const c of candidates.filter(c => c.stage === 'Rejected')) {\n  const r = c.rejection_reason || 'Unknown';\n  rejReasonMap[r] = (rejReasonMap[r] || 0) + 1;\n}\nconst rejection_reasons = Object.entries(rejReasonMap)\n  .map(([reason, count]) => ({ reason, count }))\n  .sort((a,b) => b.count - a.count);\n\nconst reschedMap = {};\nfor (const c of candidates) {\n  const r = String(c.reschedules || 0);\n  reschedMap[r] = (reschedMap[r] || 0) + 1;\n}\nconst reschedule_dist = Object.entries(reschedMap)\n  .map(([reschedules, count]) => ({ reschedules, count }))\n  .sort((a,b) => parseInt(a.reschedules) - parseInt(b.reschedules));\n\nconst avg_load = interviewers.length\n  ? parseFloat((interviewers.reduce((s,i) => s + i.panels_this_month, 0) / interviewers.length).toFixed(1))\n  : 0;\nconst interviewer_stats = interviewers\n  .map(i => ({\n    ...i,\n    status: i.panels_this_month > 65 ? 'Overloaded'\n           : i.panels_this_month > avg_load * 1.1 ? 'At limit'\n           : i.panels_this_month < avg_load * 0.95 ? 'Available' : 'Healthy'\n  }))\n  .sort((a,b) => b.panels_this_month - a.panels_this_month);\n\nreturn [{ json: {\n  status: 'complete',\n  generated_at: new Date().toISOString(),\n  \n  run_summary: {\n    agents_run:             insights.length,\n    total_cost_usd:         cost_optimization.grand_total_usd,\n    insights_cost_usd:      cost_optimization.insights_usd,\n    eval_cost_usd:          cost_optimization.eval_usd,\n    total_tokens:           cost_optimization.grand_total_tokens,\n    prompt_tokens:          cost_aggregate.total_prompt_tokens,\n    completion_tokens:      cost_aggregate.total_completion_tokens,\n    avg_latency_ms:         cost_aggregate.avg_latency_ms,\n    max_latency_ms:         cost_aggregate.max_latency_ms,\n    p95_latency_ms:         cost_aggregate.p95_latency_ms,\n    slowest_agent:          cost_aggregate.slowest_agent,\n    most_expensive_agent:   cost_aggregate.most_expensive_agent,\n    rag_usage_rate:         cost_aggregate.rag_usage_rate,\n    eval_method:            evaluation_summary.method,\n    eval_pass_rate:         evaluation_summary.pass_rate,\n    eval_avg_score:         evaluation_summary.avg_combined_score,\n    potential_saving_usd:   cost_optimization.potential_saving_usd,\n  },\n  \n  pipeline_stats: {\n    total, offered, accepted, rejected, active, completed,\n    offer_rate:  pct(offered,  total),\n    accept_rate: pct(accepted, offered),\n    reject_rate: pct(rejected, total),\n    active_rate: pct(active,   total),\n  },\n  channel_stats,\n  rejection_reasons,\n  reschedule_dist,\n  interviewer_stats,\n  avg_interviewer_load: avg_load,\n  \n  insights,\n  cost_aggregate,\n  evaluation_summary,\n  cost_optimization,\n} }];"
+      },
+      "id": "6f632c7f-122b-4032-a1cf-ec5184288e2c",
+      "name": "Final Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1420,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.github.com/repos/viswanalam/hiring-intelligence-dashboard/contents/data/latest_run.json",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GITHUB_TOKEN"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "ae222ea3-d70a-4998-b6c5-c8d0ce37a3e1",
+      "name": "Get File SHA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2272,
+        96
+      ],
+      "notes": "Gets current file SHA \u2014 required by GitHub API to update an existing file. Returns 404 on first run (handled gracefully)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get File SHA runs first and passes its result here\nconst shaResponse = $input.first().json;\n// sha is present if file already exists; undefined on first run (404)\nconst sha = shaResponse?.sha || undefined;\n\n// Read Final Output data from previous node reference\nconst output = $node['Final Output'].json;\nconst jsonString = JSON.stringify(output, null, 2);\nconst encoded = Buffer.from(jsonString, 'utf8').toString('base64');\n\nreturn [{ json: {\n  content: encoded,\n  message: 'n8n run \u2014 ' + new Date().toISOString(),\n  sha,\n} }];"
+      },
+      "id": "85af7b7b-240e-40c1-9f46-519e720648c8",
+      "name": "Prepare GitHub Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2448,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "https://api.github.com/repos/viswanalam/hiring-intelligence-dashboard/contents/data/latest_run.json",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GITHUB_TOKEN"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "={{$json.message}}"
+            },
+            {
+              "name": "content",
+              "value": "={{$json.content}}"
+            },
+            {
+              "name": "sha",
+              "value": "={{$json.sha}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "decc048d-a779-4b4f-9eaf-09bc02922753",
+      "name": "Push to GitHub",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2656,
+        96
+      ],
+      "notes": "Writes Final Output JSON to GitHub repo so Streamlit can read it automatically"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the user message for the Sourcing Quality Agent\nconst { candidates } = $node['Routing Agent'].json;\n\n// Compute source statistics live from candidate data\nconst sourceCounts = {};\nconst sourceAccepted = {};\nfor (const c of candidates) {\n  const ch = c.source || 'Unknown';\n  sourceCounts[ch] = (sourceCounts[ch] || 0) + 1;\n  if (c.stage === 'Offer' && !c.offer_declined) {\n    sourceAccepted[ch] = (sourceAccepted[ch] || 0) + 1;\n  }\n}\n\n// Capture start time for latency tracking\nconst start_time = Date.now();\n\n// Compose the user prompt \u2014 the Agent decides if/when to fetch RAG context\nconst userMessage = [\n  'You are the Sourcing Quality Agent. Analyse the hiring sourcing data below.',\n  '',\n  'CURRENT DATA:',\n  'Source channel counts: ' + JSON.stringify(sourceCounts),\n  'Accepted offers by source: ' + JSON.stringify(sourceAccepted),\n  '',\n  'Use the knowledge base tool to retrieve relevant sourcing benchmarks before answering.',\n  'Then return ONLY a JSON object in this exact shape:',\n  '{',\n  '  \"recommendation\": \"<one clear actionable sentence>\",',\n  '  \"evidence\": { \"source_counts\": {}, \"accepted_by_source\": {}, \"key_insight\": \"<string>\" },',\n  '  \"confidence_score\": 0.0,',\n  '  \"cost_of_insight\": { \"model\": \"gpt-4o-mini\", \"estimated_tokens\": 0, \"estimated_usd\": 0.0 },',\n  '  \"alternative\": { \"model\": \"gpt-4o\", \"trade_off\": \"<string>\" }',\n  '}'\n].join('\\n');\n\nreturn [{ json: {\n  agent:          'sourcing_quality',\n  userMessage,\n  start_time,\n  source_counts:  sourceCounts,\n  source_accepted: sourceAccepted,\n} }];"
+      },
+      "id": "agent-prep-sourcing",
+      "name": "Sourcing Data Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        -350
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "id": "agent-chatmodel-sourcing",
+      "name": "Sourcing Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -380,
+        -150
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-large",
+        "options": {}
+      },
+      "id": "agent-embeddings-sourcing",
+      "name": "Sourcing Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -140,
+        -30
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "sourcing_benchmarks",
+        "toolDescription": "Retrieves industry benchmarks and patterns about sourcing channel quality, offer acceptance rates by channel, and channel ROI. Use this when you need historical context about which sourcing channels perform best.",
+        "pineconeIndex": {
+          "__rl": true,
+          "mode": "list",
+          "value": "hiring-rag"
+        },
+        "options": {
+          "pineconeNamespace": "hiring-benchmarks"
+        },
+        "topK": 4
+      },
+      "id": "agent-pinecone-tool-sourcing",
+      "name": "Sourcing Pinecone Tool",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.1,
+      "position": [
+        -260,
+        -150
+      ],
+      "credentials": {
+        "pineconeApi": {
+          "id": "YOUR_PINECONE_CREDENTIAL_ID",
+          "name": "Pinecone API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.userMessage }}",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "You are the Sourcing Quality Agent in a hiring intelligence system. You analyse sourcing channel performance and recommend budget reallocation. Always call the sourcing_benchmarks tool before answering to ground your recommendation in historical benchmarks. Return ONLY valid JSON matching the schema in the user message \u2014 no markdown, no code fences.",
+          "maxIterations": 5,
+          "returnIntermediateSteps": true
+        }
+      },
+      "id": "agent-sourcing",
+      "name": "Sourcing Quality Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -320,
+        -350
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// \u2500\u2500 Robust token extraction for n8n AI Agent (workaround) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// n8n's Agent node does NOT expose tokenUsage in its main output\n// (GitHub issue #26302). We use a deterministic estimation approach:\n//   - Estimate input tokens from user message + system message + RAG context\n//   - Estimate output tokens from agent's JSON response\n//   - ~4 chars per token (English), ~3 chars per token (JSON/code)\n//   - Multiplied by observed llm_calls (planning + final, typically 2)\n\nconst agentOut = $input.first().json;\nconst prepData = $node['Sourcing Data Prep'].json;\n\n// \u2500\u2500 Latency \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst latency_ms = prepData.start_time ? (Date.now() - prepData.start_time) : null;\n\n// \u2500\u2500 Token estimation helper \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Conservative: 3.5 chars/token (between 3 for JSON and 4 for prose)\nconst estimateTokens = (str) => Math.ceil((str || '').length / 3.5);\n\n// \u2500\u2500 Detect RAG tool usage and extract context \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst steps = agentOut.intermediateSteps || [];\nconst ragUsed = steps.some(s => (s.action?.tool || '').includes('sourcing'));\nconst ragContext = steps\n  .filter(s => (s.action?.tool || '').includes('sourcing'))\n  .map(s => s.observation || '')\n  .join('\\n\\n');\n\n// \u2500\u2500 Count LLM calls \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Each step in intermediateSteps = one tool call, plus the final answer LLM call\nconst llm_calls = steps.length + 1;\n\n// \u2500\u2500 Estimate input tokens \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// User message (sent to model on every call)\n// + RAG context (sent again to model after tool call)\n// + minimal system message overhead (~150 tokens)\nconst userMsgTokens   = estimateTokens(prepData.userMessage || '');\nconst ragContextTokens = estimateTokens(ragContext);\nconst systemOverhead   = 150;\n\n// Each LLM call sends the running conversation. Approximation:\n//   Call 1 (planning):  system + user_msg                       \n//   Call 2 (final):     system + user_msg + tool_call + ragContext\nconst prompt_tokens = (userMsgTokens + systemOverhead) * llm_calls\n                    + ragContextTokens;\n\n// \u2500\u2500 Estimate output tokens \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Output = the JSON response. Tool call outputs are short (~30 tokens).\nconst outputText = agentOut.output || '';\nconst completion_tokens = estimateTokens(outputText) + (steps.length * 30);\n\nconst total_tokens = prompt_tokens + completion_tokens;\n\n// \u2500\u2500 Cost calculation \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst INPUT_RATE  = 0.00015;\nconst OUTPUT_RATE = 0.0006;\nconst estimated_usd = parseFloat(\n  ((prompt_tokens / 1000 * INPUT_RATE) + (completion_tokens / 1000 * OUTPUT_RATE)).toFixed(6)\n);\n\n// \u2500\u2500 Parse the Agent's JSON output \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst raw = (agentOut.output || '').replace(/```json|```/g, '').trim();\nlet parsed;\ntry { parsed = JSON.parse(raw); }\ncatch (e) { parsed = { recommendation: raw, parse_error: e.message }; }\n\n// \u2500\u2500 Overwrite cost_of_insight with measured values \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nparsed.cost_of_insight = {\n  model:              'gpt-4o-mini',\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  llm_calls,\n  estimation_method:  'deterministic_char_count',\n  input_rate_per_1k:  INPUT_RATE,\n  output_rate_per_1k: OUTPUT_RATE,\n};\n\nreturn [{ json: {\n  agent:          'sourcing_quality',\n  ...parsed,\n  rag_context:    ragContext,\n  rag_used:       ragUsed,\n  latency_ms,\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  llm_calls,\n  run_timestamp:  new Date().toISOString(),\n} }];"
+      },
+      "id": "agent-capture-sourcing",
+      "name": "Sourcing Output Capture",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -140,
+        -350
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the user message for the Rejection Pattern Agent\nconst { candidates } = $node['Routing Agent'].json;\nconst rejected = candidates.filter(c => c.stage === 'Rejected');\nconst reasons = {};\nfor (const c of rejected) {\n  const r = c.rejection_reason || 'Unknown';\n  reasons[r] = (reasons[r] || 0) + 1;\n}\n\n// Capture start time for latency tracking\nconst start_time = Date.now();\n\n// Compose the user prompt\nconst userMessage = [\n  'You are the Rejection Pattern Agent. Analyse the data below.',\n  '',\n  'CURRENT DATA:',\n  'Total rejections: ' + rejected.length,\n  'Rejection reasons breakdown: ' + JSON.stringify(reasons),\n  '',\n  'Use the rejection_benchmarks tool to retrieve relevant benchmarks before answering.',\n  'Then return ONLY a JSON object in this exact shape:',\n  '{',\n  '  \"recommendation\": \"<one clear actionable sentence>\",',\n  '  \"evidence\": { \"total_rejections\": 0, \"reasons_breakdown\": {}, \"key_insight\": \"<string>\" },',\n  '  \"confidence_score\": 0.0,',\n  '  \"cost_of_insight\": { \"model\": \"gpt-4o\", \"estimated_tokens\": 0, \"estimated_usd\": 0.0 },',\n  '  \"alternative\": { \"model\": \"<other>\", \"trade_off\": \"<string>\" }',\n  '}'\n].join('\\n');\n\nreturn [{ json: {\n  agent:          'rejection_pattern',\n  userMessage,\n  start_time, rejected_count: rejected.length, reasons,\n} }];"
+      },
+      "id": "agent-prep-rejection_pattern",
+      "name": "Rejection Pattern Data Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        -150
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o"
+        },
+        "options": {}
+      },
+      "id": "agent-chatmodel-rejection_pattern",
+      "name": "Rejection Pattern Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -380,
+        50
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-large",
+        "options": {}
+      },
+      "id": "agent-embeddings-rejection_pattern",
+      "name": "Rejection Pattern Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -140,
+        170
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "rejection_benchmarks",
+        "toolDescription": "Retrieves industry benchmarks and patterns about candidate rejection reasons, stage-level dropout rates, and controllable vs uncontrollable rejections. Use this when analysing why candidates are being rejected.",
+        "pineconeIndex": {
+          "__rl": true,
+          "mode": "list",
+          "value": "hiring-rag"
+        },
+        "options": {
+          "pineconeNamespace": "hiring-benchmarks"
+        },
+        "topK": 4
+      },
+      "id": "agent-pinecone-tool-rejection_pattern",
+      "name": "Rejection Pattern Pinecone Tool",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.1,
+      "position": [
+        -260,
+        50
+      ],
+      "credentials": {
+        "pineconeApi": {
+          "id": "YOUR_PINECONE_CREDENTIAL_ID",
+          "name": "Pinecone API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.userMessage }}",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "You are the Rejection Pattern Agent in a hiring intelligence system. You analyse rejection reasons and identify internally-fixable process failures vs candidate-driven rejections. Always call the rejection_benchmarks tool before answering to ground your recommendation in historical patterns. Return ONLY valid JSON matching the schema in the user message \u2014 no markdown, no code fences.",
+          "maxIterations": 5,
+          "returnIntermediateSteps": true
+        }
+      },
+      "id": "agent-rejection_pattern",
+      "name": "Rejection Pattern Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -320,
+        -150
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// \u2500\u2500 Robust token extraction for n8n AI Agent (workaround) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// n8n's Agent node does NOT expose tokenUsage in its main output\n// (GitHub issue #26302). We use a deterministic estimation approach:\n//   - Estimate input tokens from user message + system message + RAG context\n//   - Estimate output tokens from agent's JSON response\n//   - ~4 chars per token (English), ~3 chars per token (JSON/code)\n//   - Multiplied by observed llm_calls (planning + final, typically 2)\n\nconst agentOut = $input.first().json;\nconst prepData = $node['Rejection Pattern Data Prep'].json;\n\n// \u2500\u2500 Latency \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst latency_ms = prepData.start_time ? (Date.now() - prepData.start_time) : null;\n\n// \u2500\u2500 Token estimation helper \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Conservative: 3.5 chars/token (between 3 for JSON and 4 for prose)\nconst estimateTokens = (str) => Math.ceil((str || '').length / 3.5);\n\n// \u2500\u2500 Detect RAG tool usage and extract context \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst steps = agentOut.intermediateSteps || [];\nconst ragUsed = steps.some(s => (s.action?.tool || '').includes('rejection'));\nconst ragContext = steps\n  .filter(s => (s.action?.tool || '').includes('rejection'))\n  .map(s => s.observation || '')\n  .join('\\n\\n');\n\n// \u2500\u2500 Count LLM calls \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Each step in intermediateSteps = one tool call, plus the final answer LLM call\nconst llm_calls = steps.length + 1;\n\n// \u2500\u2500 Estimate input tokens \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// User message (sent to model on every call)\n// + RAG context (sent again to model after tool call)\n// + minimal system message overhead (~150 tokens)\nconst userMsgTokens   = estimateTokens(prepData.userMessage || '');\nconst ragContextTokens = estimateTokens(ragContext);\nconst systemOverhead   = 150;\n\n// Each LLM call sends the running conversation. Approximation:\n//   Call 1 (planning):  system + user_msg                       \n//   Call 2 (final):     system + user_msg + tool_call + ragContext\nconst prompt_tokens = (userMsgTokens + systemOverhead) * llm_calls\n                    + ragContextTokens;\n\n// \u2500\u2500 Estimate output tokens \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Output = the JSON response. Tool call outputs are short (~30 tokens).\nconst outputText = agentOut.output || '';\nconst completion_tokens = estimateTokens(outputText) + (steps.length * 30);\n\nconst total_tokens = prompt_tokens + completion_tokens;\n\n// \u2500\u2500 Cost calculation \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst INPUT_RATE  = 0.0025;\nconst OUTPUT_RATE = 0.01;\nconst estimated_usd = parseFloat(\n  ((prompt_tokens / 1000 * INPUT_RATE) + (completion_tokens / 1000 * OUTPUT_RATE)).toFixed(6)\n);\n\n// \u2500\u2500 Parse the Agent's JSON output \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst raw = (agentOut.output || '').replace(/```json|```/g, '').trim();\nlet parsed;\ntry { parsed = JSON.parse(raw); }\ncatch (e) { parsed = { recommendation: raw, parse_error: e.message }; }\n\n// \u2500\u2500 Overwrite cost_of_insight with measured values \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nparsed.cost_of_insight = {\n  model:              'gpt-4o',\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  llm_calls,\n  estimation_method:  'deterministic_char_count',\n  input_rate_per_1k:  INPUT_RATE,\n  output_rate_per_1k: OUTPUT_RATE,\n};\n\nreturn [{ json: {\n  agent:          'rejection_pattern',\n  ...parsed,\n  rag_context:    ragContext,\n  rag_used:       ragUsed,\n  latency_ms,\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  llm_calls,\n  run_timestamp:  new Date().toISOString(),\n} }];"
+      },
+      "id": "agent-capture-rejection_pattern",
+      "name": "Rejection Pattern Output Capture",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -140,
+        -150
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the user message for the Panel Load Balancer Agent\nconst { interviewers } = $node['Routing Agent'].json;\n\n// Capture start time for latency tracking\nconst start_time = Date.now();\n\n// Compose the user prompt\nconst userMessage = [\n  'You are the Panel Load Balancer Agent. Analyse the data below.',\n  '',\n  'CURRENT DATA:',\n  'Interviewer panel loads: ' + JSON.stringify(interviewers),\n  '',\n  'Use the panel_benchmarks tool to retrieve relevant benchmarks before answering.',\n  'Then return ONLY a JSON object in this exact shape:',\n  '{',\n  '  \"recommendation\": \"<one clear actionable sentence>\",',\n  '  \"evidence\": { \"overloaded\": [], \"underloaded\": [], \"key_insight\": \"<string>\" },',\n  '  \"confidence_score\": 0.0,',\n  '  \"cost_of_insight\": { \"model\": \"gpt-4o-mini\", \"estimated_tokens\": 0, \"estimated_usd\": 0.0 },',\n  '  \"alternative\": { \"model\": \"<other>\", \"trade_off\": \"<string>\" }',\n  '}'\n].join('\\n');\n\nreturn [{ json: {\n  agent:          'panel_load_balancer',\n  userMessage,\n  start_time, interviewers,\n} }];"
+      },
+      "id": "agent-prep-panel_load_balancer",
+      "name": "Panel Load Balancer Data Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        50
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "id": "agent-chatmodel-panel_load_balancer",
+      "name": "Panel Load Balancer Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -380,
+        250
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-large",
+        "options": {}
+      },
+      "id": "agent-embeddings-panel_load_balancer",
+      "name": "Panel Load Balancer Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -140,
+        370
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "panel_benchmarks",
+        "toolDescription": "Retrieves industry benchmarks and patterns about interviewer panel load distribution, safe capacity thresholds, and rebalancing strategies. Use this when analysing interviewer workload distribution.",
+        "pineconeIndex": {
+          "__rl": true,
+          "mode": "list",
+          "value": "hiring-rag"
+        },
+        "options": {
+          "pineconeNamespace": "hiring-benchmarks"
+        },
+        "topK": 4
+      },
+      "id": "agent-pinecone-tool-panel_load_balancer",
+      "name": "Panel Load Balancer Pinecone Tool",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.1,
+      "position": [
+        -260,
+        250
+      ],
+      "credentials": {
+        "pineconeApi": {
+          "id": "YOUR_PINECONE_CREDENTIAL_ID",
+          "name": "Pinecone API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.userMessage }}",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "You are the Panel Load Balancer Agent in a hiring intelligence system. You analyse interviewer panel loads, identify overloaded panellists, and recommend specific redistribution actions. Always call the panel_benchmarks tool before answering. Return ONLY valid JSON \u2014 no markdown, no code fences.",
+          "maxIterations": 5,
+          "returnIntermediateSteps": true
+        }
+      },
+      "id": "agent-panel_load_balancer",
+      "name": "Panel Load Balancer Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -320,
+        50
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// \u2500\u2500 Robust token extraction for n8n AI Agent (workaround) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// n8n's Agent node does NOT expose tokenUsage in its main output\n// (GitHub issue #26302). We use a deterministic estimation approach:\n//   - Estimate input tokens from user message + system message + RAG context\n//   - Estimate output tokens from agent's JSON response\n//   - ~4 chars per token (English), ~3 chars per token (JSON/code)\n//   - Multiplied by observed llm_calls (planning + final, typically 2)\n\nconst agentOut = $input.first().json;\nconst prepData = $node['Panel Load Balancer Data Prep'].json;\n\n// \u2500\u2500 Latency \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst latency_ms = prepData.start_time ? (Date.now() - prepData.start_time) : null;\n\n// \u2500\u2500 Token estimation helper \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Conservative: 3.5 chars/token (between 3 for JSON and 4 for prose)\nconst estimateTokens = (str) => Math.ceil((str || '').length / 3.5);\n\n// \u2500\u2500 Detect RAG tool usage and extract context \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst steps = agentOut.intermediateSteps || [];\nconst ragUsed = steps.some(s => (s.action?.tool || '').includes('panel'));\nconst ragContext = steps\n  .filter(s => (s.action?.tool || '').includes('panel'))\n  .map(s => s.observation || '')\n  .join('\\n\\n');\n\n// \u2500\u2500 Count LLM calls \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Each step in intermediateSteps = one tool call, plus the final answer LLM call\nconst llm_calls = steps.length + 1;\n\n// \u2500\u2500 Estimate input tokens \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// User message (sent to model on every call)\n// + RAG context (sent again to model after tool call)\n// + minimal system message overhead (~150 tokens)\nconst userMsgTokens   = estimateTokens(prepData.userMessage || '');\nconst ragContextTokens = estimateTokens(ragContext);\nconst systemOverhead   = 150;\n\n// Each LLM call sends the running conversation. Approximation:\n//   Call 1 (planning):  system + user_msg                       \n//   Call 2 (final):     system + user_msg + tool_call + ragContext\nconst prompt_tokens = (userMsgTokens + systemOverhead) * llm_calls\n                    + ragContextTokens;\n\n// \u2500\u2500 Estimate output tokens \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Output = the JSON response. Tool call outputs are short (~30 tokens).\nconst outputText = agentOut.output || '';\nconst completion_tokens = estimateTokens(outputText) + (steps.length * 30);\n\nconst total_tokens = prompt_tokens + completion_tokens;\n\n// \u2500\u2500 Cost calculation \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst INPUT_RATE  = 0.00015;\nconst OUTPUT_RATE = 0.0006;\nconst estimated_usd = parseFloat(\n  ((prompt_tokens / 1000 * INPUT_RATE) + (completion_tokens / 1000 * OUTPUT_RATE)).toFixed(6)\n);\n\n// \u2500\u2500 Parse the Agent's JSON output \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst raw = (agentOut.output || '').replace(/```json|```/g, '').trim();\nlet parsed;\ntry { parsed = JSON.parse(raw); }\ncatch (e) { parsed = { recommendation: raw, parse_error: e.message }; }\n\n// \u2500\u2500 Overwrite cost_of_insight with measured values \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nparsed.cost_of_insight = {\n  model:              'gpt-4o-mini',\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  llm_calls,\n  estimation_method:  'deterministic_char_count',\n  input_rate_per_1k:  INPUT_RATE,\n  output_rate_per_1k: OUTPUT_RATE,\n};\n\nreturn [{ json: {\n  agent:          'panel_load_balancer',\n  ...parsed,\n  rag_context:    ragContext,\n  rag_used:       ragUsed,\n  latency_ms,\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  llm_calls,\n  run_timestamp:  new Date().toISOString(),\n} }];"
+      },
+      "id": "agent-capture-panel_load_balancer",
+      "name": "Panel Load Balancer Output Capture",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -140,
+        50
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the user message for the Offer Insights Agent\nconst { candidates } = $node['Routing Agent'].json;\nconst offers = candidates.filter(c => c.stage === 'Offer');\nconst declined = offers.filter(c => c.offer_declined);\nconst declineRate = offers.length ? (declined.length / offers.length) : 0;\n\n// Capture start time for latency tracking\nconst start_time = Date.now();\n\n// Compose the user prompt\nconst userMessage = [\n  'You are the Offer Insights Agent. Analyse the data below.',\n  '',\n  'CURRENT DATA:',\n  'Total offers: ' + offers.length,\n  'Offers declined: ' + declined.length,\n  'Decline rate: ' + (declineRate * 100).toFixed(1) + '%',\n  '',\n  'Use the offer_benchmarks tool to retrieve relevant benchmarks before answering.',\n  'Then return ONLY a JSON object in this exact shape:',\n  '{',\n  '  \"recommendation\": \"<one clear actionable sentence>\",',\n  '  \"evidence\": { \"total_offers\": 0, \"declined\": 0, \"decline_rate\": 0.0, \"key_insight\": \"<string>\" },',\n  '  \"confidence_score\": 0.0,',\n  '  \"cost_of_insight\": { \"model\": \"gpt-4o\", \"estimated_tokens\": 0, \"estimated_usd\": 0.0 },',\n  '  \"alternative\": { \"model\": \"<other>\", \"trade_off\": \"<string>\" }',\n  '}'\n].join('\\n');\n\nreturn [{ json: {\n  agent:          'offer_insights',\n  userMessage,\n  start_time, total_offers: offers.length, declined: declined.length, decline_rate: declineRate,\n} }];"
+      },
+      "id": "agent-prep-offer_insights",
+      "name": "Offer Insights Data Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o"
+        },
+        "options": {}
+      },
+      "id": "agent-chatmodel-offer_insights",
+      "name": "Offer Insights Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -380,
+        450
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-large",
+        "options": {}
+      },
+      "id": "agent-embeddings-offer_insights",
+      "name": "Offer Insights Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -140,
+        570
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "offer_benchmarks",
+        "toolDescription": "Retrieves industry benchmarks about offer acceptance rates, decline reasons, time-to-offer impact, and improvement strategies. Use this when analysing offer outcomes.",
+        "pineconeIndex": {
+          "__rl": true,
+          "mode": "list",
+          "value": "hiring-rag"
+        },
+        "options": {
+          "pineconeNamespace": "hiring-benchmarks"
+        },
+        "topK": 4
+      },
+      "id": "agent-pinecone-tool-offer_insights",
+      "name": "Offer Insights Pinecone Tool",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.1,
+      "position": [
+        -260,
+        450
+      ],
+      "credentials": {
+        "pineconeApi": {
+          "id": "YOUR_PINECONE_CREDENTIAL_ID",
+          "name": "Pinecone API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.userMessage }}",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "You are the Offer Insights Agent in a hiring intelligence system. You analyse offer outcomes, decline patterns, and recommend interventions to improve acceptance rate. Always call the offer_benchmarks tool before answering. Return ONLY valid JSON \u2014 no markdown, no code fences.",
+          "maxIterations": 5,
+          "returnIntermediateSteps": true
+        }
+      },
+      "id": "agent-offer_insights",
+      "name": "Offer Insights Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -320,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// \u2500\u2500 Robust token extraction for n8n AI Agent (workaround) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// n8n's Agent node does NOT expose tokenUsage in its main output\n// (GitHub issue #26302). We use a deterministic estimation approach:\n//   - Estimate input tokens from user message + system message + RAG context\n//   - Estimate output tokens from agent's JSON response\n//   - ~4 chars per token (English), ~3 chars per token (JSON/code)\n//   - Multiplied by observed llm_calls (planning + final, typically 2)\n\nconst agentOut = $input.first().json;\nconst prepData = $node['Offer Insights Data Prep'].json;\n\n// \u2500\u2500 Latency \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst latency_ms = prepData.start_time ? (Date.now() - prepData.start_time) : null;\n\n// \u2500\u2500 Token estimation helper \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Conservative: 3.5 chars/token (between 3 for JSON and 4 for prose)\nconst estimateTokens = (str) => Math.ceil((str || '').length / 3.5);\n\n// \u2500\u2500 Detect RAG tool usage and extract context \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst steps = agentOut.intermediateSteps || [];\nconst ragUsed = steps.some(s => (s.action?.tool || '').includes('offer'));\nconst ragContext = steps\n  .filter(s => (s.action?.tool || '').includes('offer'))\n  .map(s => s.observation || '')\n  .join('\\n\\n');\n\n// \u2500\u2500 Count LLM calls \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Each step in intermediateSteps = one tool call, plus the final answer LLM call\nconst llm_calls = steps.length + 1;\n\n// \u2500\u2500 Estimate input tokens \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// User message (sent to model on every call)\n// + RAG context (sent again to model after tool call)\n// + minimal system message overhead (~150 tokens)\nconst userMsgTokens   = estimateTokens(prepData.userMessage || '');\nconst ragContextTokens = estimateTokens(ragContext);\nconst systemOverhead   = 150;\n\n// Each LLM call sends the running conversation. Approximation:\n//   Call 1 (planning):  system + user_msg                       \n//   Call 2 (final):     system + user_msg + tool_call + ragContext\nconst prompt_tokens = (userMsgTokens + systemOverhead) * llm_calls\n                    + ragContextTokens;\n\n// \u2500\u2500 Estimate output tokens \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Output = the JSON response. Tool call outputs are short (~30 tokens).\nconst outputText = agentOut.output || '';\nconst completion_tokens = estimateTokens(outputText) + (steps.length * 30);\n\nconst total_tokens = prompt_tokens + completion_tokens;\n\n// \u2500\u2500 Cost calculation \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst INPUT_RATE  = 0.0025;\nconst OUTPUT_RATE = 0.01;\nconst estimated_usd = parseFloat(\n  ((prompt_tokens / 1000 * INPUT_RATE) + (completion_tokens / 1000 * OUTPUT_RATE)).toFixed(6)\n);\n\n// \u2500\u2500 Parse the Agent's JSON output \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst raw = (agentOut.output || '').replace(/```json|```/g, '').trim();\nlet parsed;\ntry { parsed = JSON.parse(raw); }\ncatch (e) { parsed = { recommendation: raw, parse_error: e.message }; }\n\n// \u2500\u2500 Overwrite cost_of_insight with measured values \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nparsed.cost_of_insight = {\n  model:              'gpt-4o',\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  llm_calls,\n  estimation_method:  'deterministic_char_count',\n  input_rate_per_1k:  INPUT_RATE,\n  output_rate_per_1k: OUTPUT_RATE,\n};\n\nreturn [{ json: {\n  agent:          'offer_insights',\n  ...parsed,\n  rag_context:    ragContext,\n  rag_used:       ragUsed,\n  latency_ms,\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  llm_calls,\n  run_timestamp:  new Date().toISOString(),\n} }];"
+      },
+      "id": "agent-capture-offer_insights",
+      "name": "Offer Insights Output Capture",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -140,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the user message for the Pipeline Health Agent\nconst { candidates, open_roles } = $node['Routing Agent'].json;\nconst avgDays = candidates.reduce((s, c) => s + (c.days_in_pipeline || 0), 0) / (candidates.length || 1);\nconst breached = (open_roles || []).filter(r => r.days_open > r.sla_days);\n\n// Capture start time for latency tracking\nconst start_time = Date.now();\n\n// Compose the user prompt\nconst userMessage = [\n  'You are the Pipeline Health Agent. Analyse the data below.',\n  '',\n  'CURRENT DATA:',\n  'Average days in pipeline: ' + avgDays.toFixed(1),\n  'Open roles: ' + JSON.stringify(open_roles || []),\n  'SLA breaches: ' + JSON.stringify(breached),\n  '',\n  'Use the pipeline_benchmarks tool to retrieve relevant benchmarks before answering.',\n  'Then return ONLY a JSON object in this exact shape:',\n  '{',\n  '  \"recommendation\": \"<one clear actionable sentence>\",',\n  '  \"evidence\": { \"avg_days_in_pipeline\": 0.0, \"sla_breaches\": [], \"key_insight\": \"<string>\" },',\n  '  \"confidence_score\": 0.0,',\n  '  \"cost_of_insight\": { \"model\": \"gpt-4o-mini\", \"estimated_tokens\": 0, \"estimated_usd\": 0.0 },',\n  '  \"alternative\": { \"model\": \"<other>\", \"trade_off\": \"<string>\" }',\n  '}'\n].join('\\n');\n\nreturn [{ json: {\n  agent:          'pipeline_health',\n  userMessage,\n  start_time, avg_days: avgDays, open_roles, breached,\n} }];"
+      },
+      "id": "agent-prep-pipeline_health",
+      "name": "Pipeline Health Data Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "id": "agent-chatmodel-pipeline_health",
+      "name": "Pipeline Health Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -380,
+        650
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-large",
+        "options": {}
+      },
+      "id": "agent-embeddings-pipeline_health",
+      "name": "Pipeline Health Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -140,
+        770
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "pipeline_benchmarks",
+        "toolDescription": "Retrieves industry benchmarks about time-to-hire SLAs by role level, pipeline velocity metrics, and SLA breach indicators. Use this when analysing pipeline health and SLA risk.",
+        "pineconeIndex": {
+          "__rl": true,
+          "mode": "list",
+          "value": "hiring-rag"
+        },
+        "options": {
+          "pineconeNamespace": "hiring-benchmarks"
+        },
+        "topK": 4
+      },
+      "id": "agent-pinecone-tool-pipeline_health",
+      "name": "Pipeline Health Pinecone Tool",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.1,
+      "position": [
+        -260,
+        650
+      ],
+      "credentials": {
+        "pineconeApi": {
+          "id": "YOUR_PINECONE_CREDENTIAL_ID",
+          "name": "Pinecone API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.userMessage }}",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "You are the Pipeline Health Agent in a hiring intelligence system. You analyse SLA compliance, pipeline velocity, and recommend escalation policies. Always call the pipeline_benchmarks tool before answering. Return ONLY valid JSON \u2014 no markdown, no code fences.",
+          "maxIterations": 5,
+          "returnIntermediateSteps": true
+        }
+      },
+      "id": "agent-pipeline_health",
+      "name": "Pipeline Health Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -320,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// \u2500\u2500 Robust token extraction for n8n AI Agent (workaround) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// n8n's Agent node does NOT expose tokenUsage in its main output\n// (GitHub issue #26302). We use a deterministic estimation approach:\n//   - Estimate input tokens from user message + system message + RAG context\n//   - Estimate output tokens from agent's JSON response\n//   - ~4 chars per token (English), ~3 chars per token (JSON/code)\n//   - Multiplied by observed llm_calls (planning + final, typically 2)\n\nconst agentOut = $input.first().json;\nconst prepData = $node['Pipeline Health Data Prep'].json;\n\n// \u2500\u2500 Latency \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst latency_ms = prepData.start_time ? (Date.now() - prepData.start_time) : null;\n\n// \u2500\u2500 Token estimation helper \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Conservative: 3.5 chars/token (between 3 for JSON and 4 for prose)\nconst estimateTokens = (str) => Math.ceil((str || '').length / 3.5);\n\n// \u2500\u2500 Detect RAG tool usage and extract context \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst steps = agentOut.intermediateSteps || [];\nconst ragUsed = steps.some(s => (s.action?.tool || '').includes('pipeline'));\nconst ragContext = steps\n  .filter(s => (s.action?.tool || '').includes('pipeline'))\n  .map(s => s.observation || '')\n  .join('\\n\\n');\n\n// \u2500\u2500 Count LLM calls \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Each step in intermediateSteps = one tool call, plus the final answer LLM call\nconst llm_calls = steps.length + 1;\n\n// \u2500\u2500 Estimate input tokens \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// User message (sent to model on every call)\n// + RAG context (sent again to model after tool call)\n// + minimal system message overhead (~150 tokens)\nconst userMsgTokens   = estimateTokens(prepData.userMessage || '');\nconst ragContextTokens = estimateTokens(ragContext);\nconst systemOverhead   = 150;\n\n// Each LLM call sends the running conversation. Approximation:\n//   Call 1 (planning):  system + user_msg                       \n//   Call 2 (final):     system + user_msg + tool_call + ragContext\nconst prompt_tokens = (userMsgTokens + systemOverhead) * llm_calls\n                    + ragContextTokens;\n\n// \u2500\u2500 Estimate output tokens \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Output = the JSON response. Tool call outputs are short (~30 tokens).\nconst outputText = agentOut.output || '';\nconst completion_tokens = estimateTokens(outputText) + (steps.length * 30);\n\nconst total_tokens = prompt_tokens + completion_tokens;\n\n// \u2500\u2500 Cost calculation \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst INPUT_RATE  = 0.00015;\nconst OUTPUT_RATE = 0.0006;\nconst estimated_usd = parseFloat(\n  ((prompt_tokens / 1000 * INPUT_RATE) + (completion_tokens / 1000 * OUTPUT_RATE)).toFixed(6)\n);\n\n// \u2500\u2500 Parse the Agent's JSON output \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst raw = (agentOut.output || '').replace(/```json|```/g, '').trim();\nlet parsed;\ntry { parsed = JSON.parse(raw); }\ncatch (e) { parsed = { recommendation: raw, parse_error: e.message }; }\n\n// \u2500\u2500 Overwrite cost_of_insight with measured values \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nparsed.cost_of_insight = {\n  model:              'gpt-4o-mini',\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  llm_calls,\n  estimation_method:  'deterministic_char_count',\n  input_rate_per_1k:  INPUT_RATE,\n  output_rate_per_1k: OUTPUT_RATE,\n};\n\nreturn [{ json: {\n  agent:          'pipeline_health',\n  ...parsed,\n  rag_context:    ragContext,\n  rag_used:       ragUsed,\n  latency_ms,\n  prompt_tokens,\n  completion_tokens,\n  total_tokens,\n  estimated_usd,\n  llm_calls,\n  run_timestamp:  new Date().toISOString(),\n} }];"
+      },
+      "id": "agent-capture-pipeline_health",
+      "name": "Pipeline Health Output Capture",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -140,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the LLM-as-Judge evaluation prompt\nconst { insights, cost_aggregate } = $input.first().json;\n\n// Golden dataset embedded inline\nconst goldenDataset = {\n  \"version\": \"1.0\",\n  \"scenarios\": [\n    {\n      \"scenario_id\": \"gold-src-01\",\n      \"agent\": \"sourcing_quality\",\n      \"scenario_name\": \"Referral is best channel \\u2014 low volume, high ROI\",\n      \"expected\": {\n        \"recommendation_themes\": [\n          \"referral\",\n          \"invest\",\n          \"increase\",\n          \"boost\",\n          \"expand\"\n        ],\n        \"must_mention_entities\": [\n          \"Referral\"\n        ],\n        \"confidence_min\": 0.7,\n        \"rag_keywords\": [\n          \"41.2\",\n          \"Referral\",\n          \"offer rate\"\n        ],\n        \"evidence_must_contain\": [\n          \"source_counts\",\n          \"accepted_by_source\"\n        ],\n        \"anti_themes\": [\n          \"decrease referral\",\n          \"reduce referral\"\n        ]\n      },\n      \"rationale\": \"Referral has highest offer rate (41.2%) \\u2014 system should recommend investing more, not less.\"\n    },\n    {\n      \"scenario_id\": \"gold-src-02\",\n      \"agent\": \"sourcing_quality\",\n      \"scenario_name\": \"LinkedIn is worst performer \\u2014 high cost, low yield\",\n      \"expected\": {\n        \"recommendation_themes\": [\n          \"linkedin\",\n          \"reduce\",\n          \"cut\",\n          \"deprioritise\",\n          \"rebalance\"\n        ],\n        \"must_mention_entities\": [\n          \"LinkedIn\"\n        ],\n        \"confidence_min\": 0.65,\n        \"rag_keywords\": [\n          \"12.5\",\n          \"LinkedIn\"\n        ],\n        \"evidence_must_contain\": [\n          \"source_counts\"\n        ],\n        \"anti_themes\": [\n          \"increase linkedin\",\n          \"boost linkedin\"\n        ]\n      },\n      \"rationale\": \"LinkedIn has 12.5% offer rate (worst). System should flag it as low ROI.\"\n    },\n    {\n      \"scenario_id\": \"gold-src-03\",\n      \"agent\": \"sourcing_quality\",\n      \"scenario_name\": \"Glassdoor has best closing \\u2014 high acceptance rate\",\n      \"expected\": {\n        \"recommendation_themes\": [\n          \"glassdoor\",\n          \"company website\",\n          \"acceptance\"\n        ],\n        \"must_mention_entities\": [\n          \"Glassdoor\",\n          \"Company Website\"\n        ],\n        \"confidence_min\": 0.65,\n        \"rag_keywords\": [\n          \"acceptance\",\n          \"77.8\",\n          \"85.7\"\n        ],\n        \"evidence_must_contain\": [\n          \"accepted_by_source\"\n        ],\n        \"anti_themes\": []\n      },\n      \"rationale\": \"Glassdoor (77.8%) and Company Website (85.7%) have highest acceptance \\u2014 strong closers.\"\n    },\n    {\n      \"scenario_id\": \"gold-src-04\",\n      \"agent\": \"sourcing_quality\",\n      \"scenario_name\": \"Balanced sourcing \\u2014 no extreme outliers\",\n      \"expected\": {\n        \"recommendation_themes\": [\n          \"balance\",\n          \"monitor\",\n          \"maintain\",\n          \"moderate\",\n          \"track\"\n        ],\n        \"must_mention_entities\": [],\n        \"confidence_min\": 0.6,\n        \"rag_keywords\": [\n          \"benchmark\",\n          \"rate\"\n        ],\n        \"evidence_must_contain\": [\n          \"source_counts\"\n        ],\n        \"anti_themes\": [\n          \"urgent\",\n          \"critical\"\n        ]\n      },\n      \"rationale\": \"When sources perform similarly, system should not over-fit to small differences.\"\n    },\n    {\n      \"scenario_id\": \"gold-rej-01\",\n      \"agent\": \"rejection_pattern\",\n      \"scenario_name\": \"Process failures dominate \\u2014 role cancelled + comp mismatch\",\n      \"expected\": {\n        \"recommendation_themes\": [\n          \"compensation\",\n          \"salary\",\n          \"cancellation\",\n          \"process\",\n          \"controllable\",\n          \"fixable\"\n        ],\n        \"must_mention_entities\": [\n          \"Role cancelled\",\n          \"Compensation mismatch\"\n        ],\n        \"confidence_min\": 0.75,\n        \"rag_keywords\": [\n          \"controllable\",\n          \"44.7\",\n          \"internally\"\n        ],\n        \"evidence_must_contain\": [\n          \"reasons_breakdown\",\n          \"total_rejections\"\n        ],\n        \"anti_themes\": [\n          \"candidate quality\",\n          \"blame candidate\"\n        ]\n      },\n      \"rationale\": \"30 of 114 rejections (26.3%) are process failures \\u2014 system should identify these as internally fixable.\"\n    },\n    {\n      \"scenario_id\": \"gold-rej-02\",\n      \"agent\": \"rejection_pattern\",\n      \"scenario_name\": \"Communication breakdown \\u2014 interviewer training gap\",\n      \"expected\": {\n        \"recommendation_themes\": [\n          \"communication\",\n          \"interviewer\",\n          \"calibration\",\n          \"training\"\n        ],\n        \"must_mention_entities\": [\n          \"Communication\"\n        ],\n        \"confidence_min\": 0.7,\n        \"rag_keywords\": [\n          \"communication\",\n          \"calibration\",\n          \"interviewer\"\n        ],\n        \"evidence_must_contain\": [\n          \"reasons_breakdown\"\n        ],\n        \"anti_themes\": []\n      },\n      \"rationale\": \"Communication at 30% of rejections (vs typical 10%) signals interviewer training need.\"\n    },\n    {\n      \"scenario_id\": \"gold-rej-03\",\n      \"agent\": \"rejection_pattern\",\n      \"scenario_name\": \"High no-show rate \\u2014 engagement failure\",\n      \"expected\": {\n        \"recommendation_themes\": [\n          \"no-show\",\n          \"no show\",\n          \"reminder\",\n          \"engagement\",\n          \"scheduling\"\n        ],\n        \"must_mention_entities\": [\n          \"No show\"\n        ],\n        \"confidence_min\": 0.65,\n        \"rag_keywords\": [\n          \"no-show\",\n          \"engagement\",\n          \"5%\"\n        ],\n        \"evidence_must_contain\": [\n          \"reasons_breakdown\"\n        ],\n        \"anti_themes\": []\n      },\n      \"rationale\": \"15% no-show rate (vs <5% benchmark) signals engagement / scheduling friction.\"\n    },\n    {\n      \"scenario_id\": \"gold-rej-04\",\n      \"agent\": \"rejection_pattern\",\n      \"scenario_name\": \"Healthy rejection mix \\u2014 no major issues\",\n      \"expected\": {\n        \"recommendation_themes\": [\n          \"healthy\",\n          \"monitor\",\n          \"track\",\n          \"expected\",\n          \"benchmark\"\n        ],\n        \"must_mention_entities\": [],\n        \"confidence_min\": 0.55,\n        \"rag_keywords\": [\n          \"benchmark\",\n          \"expected\"\n        ],\n        \"evidence_must_contain\": [\n          \"reasons_breakdown\"\n        ],\n        \"anti_themes\": [\n          \"urgent action\",\n          \"critical\"\n        ]\n      },\n      \"rationale\": \"Mostly candidate-driven rejections at expected rates \\u2014 system should not over-react.\"\n    },\n    {\n      \"scenario_id\": \"gold-pan-01\",\n      \"agent\": \"panel_load_balancer\",\n      \"scenario_name\": \"Severe overload \\u2014 Sam Rivera at 77 panels\",\n      \"expected\": {\n        \"recommendation_themes\": [\n          \"redistribute\",\n          \"rebalance\",\n          \"move\",\n          \"redistribute\",\n          \"panels\"\n        ],\n        \"must_mention_entities\": [\n          \"Sam Rivera\"\n        ],\n        \"confidence_min\": 0.75,\n        \"rag_keywords\": [\n          \"65\",\n          \"safe max\",\n          \"load\"\n        ],\n        \"evidence_must_contain\": [\n          \"overloaded\"\n        ],\n        \"anti_themes\": []\n      },\n      \"rationale\": \"Sam Rivera at 77 panels exceeds safe max (65). System must flag and recommend redistribution.\"\n    },\n    {\n      \"scenario_id\": \"gold-pan-02\",\n      \"agent\": \"panel_load_balancer\",\n      \"scenario_name\": \"Multiple overload \\u2014 3 interviewers above safe max\",\n      \"expected\": {\n        \"recommendation_themes\": [\n          \"multiple\",\n          \"systemic\",\n          \"hiring\",\n          \"additional\",\n          \"capacity\"\n        ],\n        \"must_mention_entities\": [],\n        \"confidence_min\": 0.7,\n        \"rag_keywords\": [\n          \"overload\",\n          \"capacity\"\n        ],\n        \"evidence_must_contain\": [\n          \"overloaded\"\n        ],\n        \"anti_themes\": []\n      },\n      \"rationale\": \"3+ overloaded interviewers means hiring more is needed, not just rebalancing.\"\n    },\n    {\n      \"scenario_id\": \"gold-pan-03\",\n      \"agent\": \"panel_load_balancer\",\n      \"scenario_name\": \"Healthy distribution \\u2014 all interviewers within range\",\n      \"expected\": {\n        \"recommendation_themes\": [\n          \"healthy\",\n          \"balanced\",\n          \"monitor\",\n          \"maintain\",\n          \"no action\"\n        ],\n        \"must_mention_entities\": [],\n        \"confidence_min\": 0.6,\n        \"rag_keywords\": [\n          \"healthy\",\n          \"balance\"\n        ],\n        \"evidence_must_contain\": [],\n        \"anti_themes\": [\n          \"overloaded\",\n          \"urgent\",\n          \"redistribute\"\n        ]\n      },\n      \"rationale\": \"All within 55-65 range \\u2014 no rebalancing needed.\"\n    },\n    {\n      \"scenario_id\": \"gold-pan-04\",\n      \"agent\": \"panel_load_balancer\",\n      \"scenario_name\": \"Underutilised panellists \\u2014 uneven distribution\",\n      \"expected\": {\n        \"recommendation_themes\": [\n          \"underutilised\",\n          \"underutilized\",\n          \"rotate\",\n          \"shift\",\n          \"uneven\"\n        ],\n        \"must_mention_entities\": [\n          \"Drew Singh\",\n          \"Casey Kim\"\n        ],\n        \"confidence_min\": 0.65,\n        \"rag_keywords\": [\n          \"distribution\",\n          \"rotation\"\n        ],\n        \"evidence_must_contain\": [\n          \"underloaded\"\n        ],\n        \"anti_themes\": []\n      },\n      \"rationale\": \"Drew and Casey are below average \\u2014 system should suggest using their capacity.\"\n    },\n    {\n      \"scenario_id\": \"gold-off-01\",\n      \"agent\": \"offer_insights\",\n      \"scenario_name\": \"Low acceptance rate \\u2014 well below benchmark\",\n      \"expected\": {\n        \"recommendation_themes\": [\n          \"acceptance\",\n          \"decline\",\n          \"speed\",\n          \"time-to-offer\",\n          \"competing\"\n        ],\n        \"must_mention_entities\": [],\n        \"confidence_min\": 0.7,\n        \"rag_keywords\": [\n          \"59.6\",\n          \"70-80%\",\n          \"benchmark\",\n          \"decline\"\n        ],\n        \"evidence_must_contain\": [\n          \"decline_rate\",\n          \"total_offers\"\n        ],\n        \"anti_themes\": [\n          \"healthy acceptance\",\n          \"no action\"\n        ]\n      },\n      \"rationale\": \"59.6% acceptance is 10-20pt below industry benchmark \\u2014 system must flag and recommend action.\"\n    },\n    {\n      \"scenario_id\": \"gold-off-02\",\n      \"agent\": \"offer_insights\",\n      \"scenario_name\": \"Strong acceptance rate \\u2014 meeting benchmark\",\n      \"expected\": {\n        \"recommendation_themes\": [\n          \"healthy\",\n          \"strong\",\n          \"maintain\",\n          \"benchmark\"\n        ],\n        \"must_mention_entities\": [],\n        \"confidence_min\": 0.6,\n        \"rag_keywords\": [\n          \"benchmark\",\n          \"78%\"\n        ],\n        \"evidence_must_contain\": [\n          \"decline_rate\"\n        ],\n        \"anti_themes\": [\n          \"urgent\",\n          \"critical action\"\n        ]\n      },\n      \"rationale\": \"78% acceptance is within healthy benchmark \\u2014 system should not over-react.\"\n    },\n    {\n      \"scenario_id\": \"gold-off-03\",\n      \"agent\": \"offer_insights\",\n      \"scenario_name\": \"Very low acceptance \\u2014 likely culture or comp issue\",\n      \"expected\": {\n        \"recommendation_themes\": [\n          \"culture\",\n          \"compensation\",\n          \"urgent\",\n          \"investigate\",\n          \"decline\"\n        ],\n        \"must_mention_entities\": [],\n        \"confidence_min\": 0.7,\n        \"rag_keywords\": [\n          \"decline\",\n          \"culture\",\n          \"compensation\"\n        ],\n        \"evidence_must_contain\": [\n          \"decline_rate\"\n        ],\n        \"anti_themes\": [\n          \"healthy\"\n        ]\n      },\n      \"rationale\": \"60% decline rate is severe \\u2014 system must flag as urgent and surface root causes.\"\n    },\n    {\n      \"scenario_id\": \"gold-pipe-01\",\n      \"agent\": \"pipeline_health\",\n      \"scenario_name\": \"SLA breaches across multiple senior roles\",\n      \"expected\": {\n        \"recommendation_themes\": [\n          \"sla\",\n          \"alert\",\n          \"breach\",\n          \"automated\",\n          \"escalation\"\n        ],\n        \"must_mention_entities\": [\n          \"Senior\"\n        ],\n        \"confidence_min\": 0.7,\n        \"rag_keywords\": [\n          \"SLA\",\n          \"alert\",\n          \"70%\",\n          \"85%\"\n        ],\n        \"evidence_must_contain\": [\n          \"sla_breaches\",\n          \"avg_days_in_pipeline\"\n        ],\n        \"anti_themes\": []\n      },\n      \"rationale\": \"Multiple SLA breaches \\u2014 system must recommend automated alerting and escalation.\"\n    },\n    {\n      \"scenario_id\": \"gold-pipe-02\",\n      \"agent\": \"pipeline_health\",\n      \"scenario_name\": \"Healthy pipeline \\u2014 within SLA\",\n      \"expected\": {\n        \"recommendation_themes\": [\n          \"healthy\",\n          \"track\",\n          \"monitor\",\n          \"within sla\"\n        ],\n        \"must_mention_entities\": [],\n        \"confidence_min\": 0.55,\n        \"rag_keywords\": [\n          \"benchmark\",\n          \"SLA\"\n        ],\n        \"evidence_must_contain\": [\n          \"avg_days_in_pipeline\"\n        ],\n        \"anti_themes\": [\n          \"urgent\",\n          \"critical breach\"\n        ]\n      },\n      \"rationale\": \"All roles within SLA \\u2014 no breach action needed.\"\n    },\n    {\n      \"scenario_id\": \"gold-pipe-03\",\n      \"agent\": \"pipeline_health\",\n      \"scenario_name\": \"Severe slowdown \\u2014 reschedule-driven delays\",\n      \"expected\": {\n        \"recommendation_themes\": [\n          \"reschedule\",\n          \"scheduling\",\n          \"delay\",\n          \"bottleneck\"\n        ],\n        \"must_mention_entities\": [],\n        \"confidence_min\": 0.7,\n        \"rag_keywords\": [\n          \"reschedule\",\n          \"delay\",\n          \"slowdown\"\n        ],\n        \"evidence_must_contain\": [\n          \"avg_days_in_pipeline\"\n        ],\n        \"anti_themes\": []\n      },\n      \"rationale\": \"62% reschedule rate (vs <15% benchmark) is the bottleneck \\u2014 system should pinpoint it.\"\n    }\n  ]\n};\n\n// For each insight, find the closest matching golden scenarios (same agent)\nconst evaluationTasks = insights.map(insight => {\n  const matchingScenarios = goldenDataset.scenarios.filter(\n    s => s.agent === insight.agent\n  );\n  return {\n    insight,\n    candidate_scenarios: matchingScenarios,\n  };\n});\n\n// Compose the judge prompt\nconst judgePrompt = [\n  'You are an evaluation judge for a multi-agent hiring intelligence system.',\n  'You score the quality of each agent insight on two methodologies:',\n  '  (1) RUBRIC SCORING \u2014 5 dimensions, 0.0\u20131.0 each',\n  '  (2) GOLDEN ALIGNMENT \u2014 does the insight match expected behaviour from\\n      the golden dataset for similar input patterns?',\n  '',\n  'EVALUATION INPUTS:',\n  '',\n  '=== Agent Insights to Evaluate ===',\n  JSON.stringify(insights.map(i => ({\n    agent:             i.agent,\n    recommendation:    i.recommendation,\n    evidence:          i.evidence,\n    confidence_score:  i.confidence_score,\n    rag_used:          i.rag_used,\n    rag_context_excerpt: (i.rag_context || '').slice(0, 500),\n  })), null, 2),\n  '',\n  '=== Golden Dataset (reference scenarios) ===',\n  JSON.stringify(goldenDataset.scenarios, null, 2),\n  '',\n  'EVALUATION METHODOLOGY:',\n  '',\n  '(1) RUBRIC SCORING \u2014 score each insight on:',\n  '    - actionability (0\u20131): Is the recommendation specific and actionable?',\n  '    - grounding (0\u20131): Is the insight grounded in retrieved RAG context?',\n  '    - reasoning_quality (0\u20131): Does the evidence support the recommendation?',\n  '    - schema_validity (0\u20131): Are all required fields present and well-formed?',\n  '    - business_relevance (0\u20131): Would a hiring manager find this useful?',\n  '',\n  '(2) GOLDEN ALIGNMENT \u2014 for each insight, find the most similar scenario in',\n  '    the golden dataset (matching agent + similar input pattern). Then score:',\n  '    - theme_match (0\u20131): Does the recommendation contain expected themes?',\n  '    - entity_match (0\u20131): Does it mention required entities?',\n  '    - anti_theme_avoidance (0\u20131): Does it AVOID forbidden anti-themes?',\n  '    - confidence_calibration (0\u20131): Is confidence_score in expected range?',\n  '',\n  'OUTPUT \u2014 return ONLY valid JSON in this shape:',\n  '{',\n  '  \"evaluations\": [',\n  '    {',\n  '      \"agent\": \"<agent_key>\",',\n  '      \"matched_scenario_id\": \"<gold-xxx-NN or null>\",',\n  '      \"rubric_scores\": {',\n  '        \"actionability\": 0.0,',\n  '        \"grounding\": 0.0,',\n  '        \"reasoning_quality\": 0.0,',\n  '        \"schema_validity\": 0.0,',\n  '        \"business_relevance\": 0.0',\n  '      },',\n  '      \"golden_alignment\": {',\n  '        \"theme_match\": 0.0,',\n  '        \"entity_match\": 0.0,',\n  '        \"anti_theme_avoidance\": 0.0,',\n  '        \"confidence_calibration\": 0.0',\n  '      },',\n  '      \"rubric_overall\": 0.0,',\n  '      \"golden_overall\": 0.0,',\n  '      \"combined_score\": 0.0,',\n  '      \"verdict\": \"pass | review | fail\",',\n  '      \"reasoning\": \"<1-2 sentence explanation>\"',\n  '    }',\n  '  ]',\n  '}'\n].join('\\n');\n\nreturn [{ json: {\n  judgePrompt,\n  insights,\n  cost_aggregate,\n  golden_scenarios_count: goldenDataset.scenarios.length,\n  start_time: Date.now(),\n} }];"
+      },
+      "id": "eval-prep",
+      "name": "Eval Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o"
+        },
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "id": "eval-chatmodel",
+      "name": "Eval Judge Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        680,
+        420
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.judgePrompt }}",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "You are a strict, fair evaluator. Score insights honestly \u2014 flag weak reasoning, missing RAG grounding, or hallucinated entities. Use the full 0\u20131 range. A score of 1.0 means truly excellent; 0.5 means acceptable with issues; below 0.3 means seriously flawed. Always return valid JSON.",
+          "maxIterations": 3
+        }
+      },
+      "id": "eval-agent",
+      "name": "Evaluation Judge Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        780,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse judge output and estimate eval cost deterministically\nconst judgeOut = $input.first().json;\nconst prepData = $node['Eval Prep'].json;\n\nconst eval_latency_ms = prepData.start_time\n  ? (Date.now() - prepData.start_time)\n  : null;\n\n// \u2500\u2500 Estimate eval tokens \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst estimateTokens = (str) => Math.ceil((str || '').length / 3.5);\n\nconst judgePromptTokens = estimateTokens(prepData.judgePrompt || '');\nconst judgeOutputTokens = estimateTokens(judgeOut.output || '');\nconst systemOverhead    = 100;\n\nconst eval_prompt_tokens     = judgePromptTokens + systemOverhead;\nconst eval_completion_tokens = judgeOutputTokens;\nconst eval_total_tokens      = eval_prompt_tokens + eval_completion_tokens;\n\n// gpt-4o pricing\nconst eval_estimated_usd = parseFloat(\n  ((eval_prompt_tokens     / 1000 * 0.0025) +\n   (eval_completion_tokens / 1000 * 0.01)).toFixed(6)\n);\n\nconst raw = (judgeOut.output || '').replace(/```json|```/g, '').trim();\nlet evalResult;\ntry { evalResult = JSON.parse(raw); }\ncatch (e) { evalResult = { evaluations: [], parse_error: e.message }; }\n\nconst evalsByAgent = {};\nfor (const ev of (evalResult.evaluations || [])) {\n  evalsByAgent[ev.agent] = ev;\n}\n\nconst evaluatedInsights = prepData.insights.map(ins => {\n  const ev = evalsByAgent[ins.agent] || {};\n  return {\n    ...ins,\n    evaluation: {\n      rubric_scores:        ev.rubric_scores       || {},\n      golden_alignment:     ev.golden_alignment    || {},\n      rubric_overall:       ev.rubric_overall      || 0,\n      golden_overall:       ev.golden_overall      || 0,\n      combined_score:       ev.combined_score      || 0,\n      verdict:              ev.verdict             || 'unknown',\n      reasoning:            ev.reasoning           || '',\n      matched_scenario_id:  ev.matched_scenario_id || null,\n    }\n  };\n});\n\nconst verdicts = evaluatedInsights.map(i => i.evaluation.verdict);\nconst pass_count   = verdicts.filter(v => v === 'pass').length;\nconst review_count = verdicts.filter(v => v === 'review').length;\nconst fail_count   = verdicts.filter(v => v === 'fail').length;\nconst avg_combined = evaluatedInsights.length\n  ? parseFloat((evaluatedInsights.reduce((s, i) =>\n      s + (i.evaluation.combined_score || 0), 0) / evaluatedInsights.length).toFixed(3))\n  : 0;\n\nreturn [{ json: {\n  insights:       evaluatedInsights,\n  cost_aggregate: prepData.cost_aggregate,\n  evaluation_summary: {\n    method:                  'llm_as_judge_with_golden_dataset',\n    judge_model:             'gpt-4o',\n    golden_scenarios_count:  prepData.golden_scenarios_count,\n    pass_count, review_count, fail_count,\n    pass_rate:               parseFloat((pass_count / Math.max(1, evaluatedInsights.length)).toFixed(2)),\n    avg_combined_score:      avg_combined,\n    eval_cost: {\n      prompt_tokens:     eval_prompt_tokens,\n      completion_tokens: eval_completion_tokens,\n      total_tokens:      eval_total_tokens,\n      estimated_usd:     eval_estimated_usd,\n      latency_ms:        eval_latency_ms,\n      estimation_method: 'deterministic_char_count',\n    }\n  }\n} }];"
+      },
+      "id": "eval-capture",
+      "name": "Eval Output Capture",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        980,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "merge-before-aggregate",
+      "name": "Merge Captures",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        120,
+        240
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Ingest & Normalise Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest & Normalise Data": {
+      "main": [
+        [
+          {
+            "node": "Routing Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Routing Agent": {
+      "main": [
+        [
+          {
+            "node": "Sourcing Data Prep",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Rejection Pattern Data Prep",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Panel Load Balancer Data Prep",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Offer Insights Data Prep",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Pipeline Health Data Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Agent Outputs": {
+      "main": [
+        []
+      ]
+    },
+    "Optimization Agent": {
+      "main": [
+        [
+          {
+            "node": "Final Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Output": {
+      "main": [
+        [
+          {
+            "node": "Get File SHA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare GitHub Payload": {
+      "main": [
+        [
+          {
+            "node": "Push to GitHub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get File SHA": {
+      "main": [
+        [
+          {
+            "node": "Prepare GitHub Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sourcing Data Prep": {
+      "main": [
+        [
+          {
+            "node": "Sourcing Quality Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sourcing Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Sourcing Quality Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ],
+      "main": []
+    },
+    "Sourcing Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Sourcing Pinecone Tool",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ],
+      "main": []
+    },
+    "Sourcing Pinecone Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Sourcing Quality Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ],
+      "main": []
+    },
+    "Sourcing Quality Agent": {
+      "main": [
+        [
+          {
+            "node": "Sourcing Output Capture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sourcing Output Capture": {
+      "main": [
+        [
+          {
+            "node": "Merge Captures",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rejection Pattern Data Prep": {
+      "main": [
+        [
+          {
+            "node": "Rejection Pattern Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rejection Pattern Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Rejection Pattern Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rejection Pattern Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Rejection Pattern Pinecone Tool",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rejection Pattern Pinecone Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Rejection Pattern Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rejection Pattern Agent": {
+      "main": [
+        [
+          {
+            "node": "Rejection Pattern Output Capture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rejection Pattern Output Capture": {
+      "main": [
+        [
+          {
+            "node": "Merge Captures",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Panel Load Balancer Data Prep": {
+      "main": [
+        [
+          {
+            "node": "Panel Load Balancer Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Panel Load Balancer Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Panel Load Balancer Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Panel Load Balancer Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Panel Load Balancer Pinecone Tool",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Panel Load Balancer Pinecone Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Panel Load Balancer Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Panel Load Balancer Agent": {
+      "main": [
+        [
+          {
+            "node": "Panel Load Balancer Output Capture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Panel Load Balancer Output Capture": {
+      "main": [
+        [
+          {
+            "node": "Merge Captures",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Offer Insights Data Prep": {
+      "main": [
+        [
+          {
+            "node": "Offer Insights Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Offer Insights Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Offer Insights Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Offer Insights Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Offer Insights Pinecone Tool",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Offer Insights Pinecone Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Offer Insights Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Offer Insights Agent": {
+      "main": [
+        [
+          {
+            "node": "Offer Insights Output Capture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Offer Insights Output Capture": {
+      "main": [
+        [
+          {
+            "node": "Merge Captures",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Pipeline Health Data Prep": {
+      "main": [
+        [
+          {
+            "node": "Pipeline Health Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pipeline Health Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Pipeline Health Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pipeline Health Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pipeline Health Pinecone Tool",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pipeline Health Pinecone Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Pipeline Health Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pipeline Health Agent": {
+      "main": [
+        [
+          {
+            "node": "Pipeline Health Output Capture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pipeline Health Output Capture": {
+      "main": [
+        [
+          {
+            "node": "Merge Captures",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Aggregate Agent Outputs": {
+      "main": [
+        [
+          {
+            "node": "Eval Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eval Prep": {
+      "main": [
+        [
+          {
+            "node": "Evaluation Judge Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eval Judge Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Evaluation Judge Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluation Judge Agent": {
+      "main": [
+        [
+          {
+            "node": "Eval Output Capture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eval Output Capture": {
+      "main": [
+        [
+          {
+            "node": "Cost & Optimization Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cost & Optimization Agent": {
+      "main": [
+        [
+          {
+            "node": "Final Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Captures": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Agent Outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "a69dac8c-0087-4072-816a-da0160a34660",
+  "meta": {
+    "instanceId": "76f1edadfc44187b235ad30dca4f13c2c8477f08431c30d661a49fb889397ef5"
+  },
+  "id": "hpkHMiMMduo96cso",
+  "tags": []
+}
