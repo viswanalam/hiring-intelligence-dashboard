@@ -5,7 +5,7 @@ ai-powered hiring intelligence dashboard
 Input: CSV
 https://docs.google.com/spreadsheets/d/1WyIIQ3YhGumHS-L8dZCSR2-TwhHG1-Fg5qE7CIHgK9I/
 
-Internal Tools: Pinecone RAG, n8n, Python
+Tech Stack: Pinecone RAG, n8n, Python
 https://app.pinecone.io/organizations/-OuhWbHZbG4d_WD0vmf1/projects/d657a2a1-b6ef-4ece-b722-bca0b9e52931/indexes
 
 Output: Streamlit Dashboard
