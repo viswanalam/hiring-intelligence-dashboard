@@ -10,6 +10,7 @@ https://app.pinecone.io/organizations/-OuhWbHZbG4d_WD0vmf1/projects/d657a2a1-b6e
 
 Output: Streamlit Dashboard
 https://hiring-intelligence-dashboard.streamlit.app/
+**NOTE**: If the Streamlit Dashboard says - app needs to wakeup, please click the button to wake the app and refresh the browser couple times.
 
 Documentation (Technical): Github Repo
 https://github.com/viswanalam/hiring-intelligence-dashboard
